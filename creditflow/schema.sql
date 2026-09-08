@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS clients (
   zip                   TEXT,
   id_last4              TEXT,
   date_of_birth         TEXT,
+  -- SSN completo, cifrado con AES-GCM (ver PII_ENCRYPTION_KEY / encryptSsn en src/index.js) —
+  -- nunca se guarda en texto plano ni se manda por JSON normal; solo /clients/:id/ssn/reveal lo
+  -- descifra, y cada uso queda registrado en activity_log.
+  ssn_full_enc           TEXT,
   status                TEXT NOT NULL DEFAULT 'activo',
   notes                 TEXT,
   portal_username       TEXT UNIQUE,
@@ -189,7 +193,24 @@ CREATE TABLE IF NOT EXISTS activity_log (
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Congelamiento (security freeze) de identidad en las agencias secundarias de verificación —
+-- una fila por cliente/agencia. Se dispara desde la sección "Freeze" en la ficha del cliente.
+CREATE TABLE IF NOT EXISTS client_freezes (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id          INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  agency             TEXT NOT NULL,
+  status             TEXT NOT NULL DEFAULT 'no_iniciado'
+                     CHECK (status IN ('no_iniciado', 'solicitado', 'congelado', 'requiere_llamada', 'no_disponible')),
+  requested_at       TEXT,
+  confirmed_at       TEXT,
+  confirmation_code  TEXT,
+  notes              TEXT,
+  updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (client_id, agency)
+);
+
 CREATE INDEX IF NOT EXISTS idx_clients_status ON clients(status);
+CREATE INDEX IF NOT EXISTS idx_client_freezes_client ON client_freezes(client_id);
 CREATE INDEX IF NOT EXISTS idx_credit_items_client ON credit_items(client_id);
 CREATE INDEX IF NOT EXISTS idx_credit_items_category ON credit_items(category);
 CREATE INDEX IF NOT EXISTS idx_letters_client ON letters(client_id);
