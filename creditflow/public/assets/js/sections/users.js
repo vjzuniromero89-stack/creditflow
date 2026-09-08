@@ -40,21 +40,28 @@ export async function renderPortalUsers(container) {
     }
     box.innerHTML = `
       <table>
-        <thead><tr><th>Cliente</th><th>Usuario del portal</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Cliente</th><th>Usuario del portal</th><th>Acceso</th><th>Contraseña</th><th></th></tr></thead>
         <tbody>
           ${clients
-            .map(
-              (c) => `
+            .map((c) => {
+              const passwordStatus = !c.portal_username
+                ? `<span class="text-muted">—</span>`
+                : c.portal_must_change_password
+                ? `<span class="badge badge-pausado" title="Todavía está usando la contraseña temporal test1234">Pendiente de cambiar</span>`
+                : `<span class="badge badge-activo">Ya la cambió</span>`;
+              return `
             <tr data-id="${c.id}">
               <td class="row-name">${escapeHtml(c.full_name)}</td>
               <td>${c.portal_username ? `<code>${escapeHtml(c.portal_username)}</code>` : `<span class="text-muted">— sin usuario —</span>`}</td>
               <td>${c.portal_username ? `<span class="badge badge-activo">Con acceso</span>` : `<span class="badge badge-pausado">Sin acceso</span>`}</td>
+              <td>${passwordStatus}</td>
               <td class="cell-actions">
+                ${c.has_portal_password ? `<button class="btn btn-ghost btn-sm" data-view="${c.id}">${icon("eye")} Ver contraseña</button>` : ""}
                 <button class="btn btn-ghost btn-sm" data-reset="${c.id}">${icon("refresh")} ${c.portal_username ? "Regenerar contraseña" : "Generar acceso"}</button>
                 <button class="btn btn-ghost btn-sm" data-open="${c.id}">Ver cliente</button>
               </td>
-            </tr>`
-            )
+            </tr>`;
+            })
             .join("")}
         </tbody>
       </table>
@@ -62,6 +69,29 @@ export async function renderPortalUsers(container) {
 
     box.querySelectorAll("[data-open]").forEach((b) =>
       b.addEventListener("click", () => window.__creditflowNavigate(`#/clientes/${b.dataset.open}`))
+    );
+    box.querySelectorAll("[data-view]").forEach((b) =>
+      b.addEventListener("click", async () => {
+        b.disabled = true;
+        try {
+          const r = await api.post(`/clients/${b.dataset.view}/portal/password-reveal`, {});
+          const { body, close } = openModal({ title: "Contraseña actual del portal", bodyHtml: "" });
+          body.innerHTML = `
+            <div class="text-sm text-muted" style="margin-bottom:10px">${
+              r.must_change_password
+                ? "El cliente todavía no ha entrado a cambiarla — sigue siendo la temporal."
+                : "El cliente ya creó esta contraseña él mismo."
+            }</div>
+          `;
+          showPortalPasswordReveal(body, r.portal_username, r.portal_password_plain);
+          body.insertAdjacentHTML("beforeend", `<div class="form-actions"><button type="button" class="btn btn-primary" id="portal-view-close">Listo</button></div>`);
+          body.querySelector("#portal-view-close").addEventListener("click", close);
+        } catch (err) {
+          toast(err.message, "error");
+        } finally {
+          b.disabled = false;
+        }
+      })
     );
     box.querySelectorAll("[data-reset]").forEach((b) =>
       b.addEventListener("click", async () => {
@@ -99,7 +129,7 @@ export async function renderPortalUsers(container) {
       } else {
         const { body } = openModal({ title: `Accesos de portal generados (${created.length})`, bodyHtml: "", wide: true });
         body.innerHTML = `
-          <p class="text-sm text-muted" style="margin-bottom:12px">⚠️ Guarda esta lista ahora — las contraseñas no se pueden volver a mostrar. Compártele a cada cliente su usuario y contraseña.</p>
+          <p class="text-sm text-muted" style="margin-bottom:12px">Compártele a cada cliente su usuario y contraseña. Si necesitas volver a verla después, hazlo desde el botón "Ver contraseña" de la tabla.</p>
           <div class="table-wrap">
             <table>
               <thead><tr><th>Cliente</th><th>Usuario</th><th>Contraseña</th></tr></thead>

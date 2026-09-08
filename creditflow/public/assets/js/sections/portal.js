@@ -28,8 +28,68 @@ export async function bootPortal() {
   }
 
   PortalState.client = status.client;
+
+  // Si todavía está con la contraseña temporal (test1234), se le pide crear la suya antes de
+  // dejarlo ver nada de su caso.
+  if (status.client.must_change_password) {
+    renderPortalCreatePassword();
+    return;
+  }
+
   renderPortalShell();
   routePortal();
+}
+
+function renderPortalCreatePassword() {
+  root.innerHTML = `
+    <div class="auth-screen">
+      <div class="auth-card">
+        <div class="auth-brand"><span class="mark">⚡</span><span class="name">CreditFlow</span></div>
+        <div class="auth-sub">Hola, ${escapeHtml(PortalState.client.full_name)} — por seguridad, antes de ver tu caso crea tu propia contraseña (ya no vas a usar la temporal).</div>
+        <div id="portal-newpw-error"></div>
+        <form id="portal-newpw-form">
+          <div class="field" style="margin-bottom:16px">
+            <label>Nueva contraseña</label>
+            <input type="password" name="new_password" required minlength="6" autofocus autocomplete="new-password" />
+          </div>
+          <div class="field">
+            <label>Repite la nueva contraseña</label>
+            <input type="password" name="confirm_password" required minlength="6" autocomplete="new-password" />
+          </div>
+          <button class="btn btn-primary" type="submit">Guardar y entrar</button>
+        </form>
+        <div class="auth-foot">
+          <button type="button" class="btn btn-ghost btn-sm" id="portal-newpw-logout">${icon("logout")} Cerrar sesión</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("portal-newpw-logout").addEventListener("click", async () => {
+    try {
+      await api.post("/portal/logout");
+    } catch {}
+    bootPortal();
+  });
+
+  document.getElementById("portal-newpw-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const errBox = document.getElementById("portal-newpw-error");
+    errBox.innerHTML = "";
+    const newPassword = (fd.get("new_password") || "").trim();
+    const confirmPassword = (fd.get("confirm_password") || "").trim();
+    if (newPassword !== confirmPassword) {
+      errBox.innerHTML = `<div class="auth-error">Las dos contraseñas no son iguales.</div>`;
+      return;
+    }
+    try {
+      await api.post("/portal/change-password", { new_password: newPassword });
+      bootPortal();
+    } catch (err) {
+      errBox.innerHTML = `<div class="auth-error">${err.message}</div>`;
+    }
+  });
 }
 
 function renderPortalLogin() {

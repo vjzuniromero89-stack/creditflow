@@ -13,13 +13,13 @@ import { renderClientAddresses } from "./addresses.js";
 
 const US_STATES = "AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split(" ");
 
-// Muestra el usuario/contraseña del portal UNA sola vez (justo al crearse o al regenerarse) —
-// después ya no se puede volver a leer la contraseña, solo queda su hash. Se usa tanto al crear
-// un cliente nuevo como al regenerar el acceso desde su ficha.
+// Muestra el usuario/contraseña del portal — al crearse, al regenerarse, o al consultarla después
+// desde "Usuarios" (Ver contraseña). Se puede volver a consultar cuando haga falta (queda guardada
+// cifrada), así que no hace falta correr a copiarla en ese momento.
 export function showPortalPasswordReveal(box, username, password) {
   box.innerHTML = `
     <div class="card" style="border-color:var(--amber);padding:12px">
-      <div class="text-sm" style="margin-bottom:8px"><strong>⚠️ Guarda esta contraseña ahora</strong> — por seguridad no se puede volver a mostrar. Compártela con tu cliente para que entre a su portal.</div>
+      <div class="text-sm" style="margin-bottom:8px">Compártela con tu cliente para que entre a su portal. También puedes volver a consultarla después desde "Usuarios" → Ver contraseña.</div>
       <div class="text-sm text-muted" style="margin-bottom:8px">Copia el usuario y la contraseña por separado (con los botones de abajo) — si copias los dos juntos y el cliente los pega en un solo campo, el login le va a marcar "usuario o contraseña incorrectos".</div>
       <div class="flex gap-8" style="align-items:center;flex-wrap:wrap;margin-bottom:6px">
         <code style="background:rgba(255,255,255,.06);padding:5px 10px;border-radius:6px;font-size:13px">${escapeHtml(username)}</code>
@@ -210,7 +210,7 @@ export async function renderClientsList(container) {
       } else {
         const { body } = openModal({ title: `Accesos de portal generados (${created.length})`, bodyHtml: "", wide: true });
         body.innerHTML = `
-          <p class="text-sm text-muted" style="margin-bottom:12px">⚠️ Guarda esta lista ahora — las contraseñas no se pueden volver a mostrar. Compártele a cada cliente su usuario y contraseña.</p>
+          <p class="text-sm text-muted" style="margin-bottom:12px">Compártele a cada cliente su usuario y contraseña. Si necesitas volver a verla después, puedes hacerlo desde la sección "Usuarios".</p>
           <div class="table-wrap">
             <table>
               <thead><tr><th>Cliente</th><th>Usuario</th><th>Contraseña</th></tr></thead>
