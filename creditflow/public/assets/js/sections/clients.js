@@ -20,21 +20,27 @@ export function showPortalPasswordReveal(box, username, password) {
   box.innerHTML = `
     <div class="card" style="border-color:var(--amber);padding:12px">
       <div class="text-sm" style="margin-bottom:8px"><strong>⚠️ Guarda esta contraseña ahora</strong> — por seguridad no se puede volver a mostrar. Compártela con tu cliente para que entre a su portal.</div>
-      <div class="flex gap-8" style="align-items:center;flex-wrap:wrap">
+      <div class="text-sm text-muted" style="margin-bottom:8px">Copia el usuario y la contraseña por separado (con los botones de abajo) — si copias los dos juntos y el cliente los pega en un solo campo, el login le va a marcar "usuario o contraseña incorrectos".</div>
+      <div class="flex gap-8" style="align-items:center;flex-wrap:wrap;margin-bottom:6px">
         <code style="background:rgba(255,255,255,.06);padding:5px 10px;border-radius:6px;font-size:13px">${escapeHtml(username)}</code>
+        <button class="btn btn-ghost btn-sm" type="button" id="copy-portal-user">${icon("copy")} Copiar usuario</button>
+      </div>
+      <div class="flex gap-8" style="align-items:center;flex-wrap:wrap">
         <code style="background:rgba(255,255,255,.06);padding:5px 10px;border-radius:6px;font-size:13px">${escapeHtml(password)}</code>
-        <button class="btn btn-ghost btn-sm" type="button" id="copy-portal-creds">${icon("copy")} Copiar</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="copy-portal-pass">${icon("copy")} Copiar contraseña</button>
       </div>
     </div>
   `;
-  box.querySelector("#copy-portal-creds").addEventListener("click", async () => {
+  const copy = async (text, okMsg) => {
     try {
-      await navigator.clipboard.writeText(`Usuario: ${username}\nContraseña: ${password}`);
-      toast("Copiado al portapapeles", "success");
+      await navigator.clipboard.writeText(text);
+      toast(okMsg, "success");
     } catch {
       toast("No se pudo copiar — cópialo manualmente", "error");
     }
-  });
+  };
+  box.querySelector("#copy-portal-user").addEventListener("click", () => copy(username, "Usuario copiado"));
+  box.querySelector("#copy-portal-pass").addEventListener("click", () => copy(password, "Contraseña copiada"));
 }
 
 function clientFormHtml(c = {}) {

@@ -42,11 +42,11 @@ function renderPortalLogin() {
         <form id="portal-login-form">
           <div class="field" style="margin-bottom:16px">
             <label>Usuario</label>
-            <input type="text" name="username" required autofocus />
+            <input type="text" name="username" required autofocus autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" />
           </div>
           <div class="field">
             <label>Contraseña</label>
-            <input type="password" name="password" required />
+            <input type="password" name="password" required autocomplete="current-password" />
           </div>
           <button class="btn btn-primary" type="submit">Entrar</button>
         </form>
@@ -67,7 +67,7 @@ function renderPortalLogin() {
     const errBox = document.getElementById("portal-login-error");
     errBox.innerHTML = "";
     try {
-      await api.post("/portal/login", { username: fd.get("username"), password: fd.get("password") });
+      await api.post("/portal/login", { username: (fd.get("username") || "").trim(), password: (fd.get("password") || "").trim() });
       bootPortal();
     } catch (err) {
       errBox.innerHTML = `<div class="auth-error">${err.message}</div>`;
