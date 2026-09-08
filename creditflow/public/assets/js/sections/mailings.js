@@ -70,7 +70,9 @@ function buildBatchCsv(groupLetters) {
     const a = parseRecipientAddress(l.recipient_address);
     // Custom Field1 y 5 quedan como referencia — así en los reportes de certifiedmaillabels.com se
     // puede identificar a qué cliente/carta de CreditFlow corresponde cada etiqueta.
-    return ["", a.name, a.line1, a.line2, a.city, a.state, a.zip, "", "", `${l.client_name} — ${l.title}`, "", "", "", `CF-${l.id}`];
+    // Guión normal (no "—") en Custom Field1 — certifiedmaillabels.com marca el guión largo como
+    // carácter inválido para las especificaciones de USPS.
+    return ["", a.name, a.line1, a.line2, a.city, a.state, a.zip, "", "", `${l.client_name} - ${l.title}`, "", "", "", `CF-${l.id}`];
   });
   return [BATCH_CSV_HEADERS, ...rows].map((r) => r.map(csvEscapeCell).join(",")).join("\r\n");
 }
