@@ -181,6 +181,25 @@ CREATE TABLE IF NOT EXISTS pricing_settings (
   updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Tarifas personalizadas POR CLIENTE (opcional) — permite cobrarle a un cliente distinto que la
+-- tarifa general de pricing_settings, categoría por categoría. Todas las columnas son NULL por
+-- defecto: NULL significa "usa la tarifa general de Configuración para esta categoría"; un valor
+-- no-NULL significa "para este cliente, esta categoría se cobra a este monto en vez del general".
+-- Se edita directamente donde dice "Tarifa" en la ficha de cada cliente (panel de Ganancia).
+CREATE TABLE IF NOT EXISTS client_pricing (
+  client_id           INTEGER PRIMARY KEY REFERENCES clients(id) ON DELETE CASCADE,
+  fee_coleccion       REAL,
+  fee_charge_off      REAL,
+  fee_pago_tardio     REAL,
+  fee_liquidada       REAL,
+  fee_repossesion     REAL,
+  fee_foreclosure     REAL,
+  fee_bancarrota      REAL,
+  fee_inquiry         REAL,
+  fee_otro            REAL,
+  updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Bitácora de actividad genérica (polimórfica): entity_type + entity_id identifican a qué
 -- registro pertenece cada evento (cliente, carta, plantilla, ajustes, etc.).
 CREATE TABLE IF NOT EXISTS activity_log (
