@@ -670,7 +670,7 @@ export async function renderClientDetail(container, id) {
 
     <div class="section-head" style="margin-top:24px">
       <div>
-        <h2>Documentos del cliente</h2>
+        <h2>Documentos</h2>
         <p class="text-sm text-muted" style="margin-top:2px">ID, comprobante de domicilio y Social Security — se incluyen automáticamente en las cartas que los requieran.</p>
       </div>
     </div>
@@ -678,7 +678,7 @@ export async function renderClientDetail(container, id) {
 
     <div class="section-head" style="margin-top:24px">
       <div>
-        <h2>Colecciones de este cliente</h2>
+        <h2>Colecciones</h2>
         <p class="text-sm text-muted" style="margin-top:2px">Ítems negativos detectados en su reporte de crédito (colecciones, charge-offs, pagos tardíos, inquiries).</p>
       </div>
       <div class="flex gap-12">
@@ -694,14 +694,14 @@ export async function renderClientDetail(container, id) {
 
     <div class="section-head" style="margin-top:24px">
       <div>
-        <h2>Direcciones del cliente</h2>
+        <h2>Direcciones</h2>
         <p class="text-sm text-muted" style="margin-top:2px">Historial completo de direcciones reportadas — se actualiza solo al importar un reporte de crédito.</p>
       </div>
     </div>
     <div id="client-addresses"></div>
 
     <div class="section-head" style="margin-top:24px">
-      <h2>Cartas de este cliente</h2>
+      <h2>Cartas</h2>
       <button class="btn btn-primary" id="new-letter-btn">${icon("plus")} Nueva carta</button>
     </div>
     <div class="table-wrap"><div id="client-letters"></div></div>
