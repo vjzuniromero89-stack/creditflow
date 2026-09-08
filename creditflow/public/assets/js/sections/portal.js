@@ -1,11 +1,12 @@
 // Portal del cliente — completamente separado de la app de tu equipo: su propia pantalla de
 // acceso, su propia sesión (cookie "portal_session", nunca "session") y su propia vista de solo
-// lectura del caso. Nunca pide ni muestra tarifas/precios — esa información es solo tuya y vive
-// en Ganancias, dentro de la app de tu equipo.
+// lectura del caso. Sí muestra la tarifa de cada ítem y cuánto le toca pagar ahora mismo (lo que ya
+// se removió y todavía no está marcado como pagado) — el desglose fino de cobrado/por cobrar de
+// TODOS tus clientes sigue viviendo solo en Ganancias, dentro de la app de tu equipo.
 import { api } from "../api.js";
 import { icon } from "../icons.js";
 import { escapeHtml, formatDate } from "../utils.js";
-import { CATEGORY_META } from "./collections.js";
+import { CATEGORY_META, money } from "./collections.js";
 
 const root = document.getElementById("root");
 const ADDRESS_STATUS_LABELS = { activa: "Activa", disputada: "Disputada", eliminada: "Ya no aparece" };
@@ -113,7 +114,7 @@ async function routePortal() {
 
 async function renderPortalCase(content) {
   content.innerHTML = `<div class="text-sm text-muted">Cargando...</div>`;
-  const { items, addresses } = await api.get("/portal/case");
+  const { items, addresses, total_due } = await api.get("/portal/case");
 
   const total = items.length;
   const removedCount = items.filter((it) => it.removed_status === "eliminado").length;
@@ -132,6 +133,10 @@ async function renderPortalCase(content) {
       <div class="card kpi-card kpi-c2">
         <div class="kpi-label">Todavía en el reporte</div>
         <div class="kpi-value">${total - removedCount}</div>
+      </div>
+      <div class="card kpi-card kpi-c4">
+        <div class="kpi-label">Total a pagar</div>
+        <div class="kpi-value">${money(total_due)}</div>
       </div>
     </div>
 
@@ -185,16 +190,21 @@ async function renderPortalCase(content) {
 
   if (!total) return;
 
+  const CATEGORY_ORDER = Object.keys(CATEGORY_META);
   function drawItemsTable(filterCat) {
     const box = document.getElementById("portal-items-table");
-    const filtered = filterCat ? items.filter((it) => it.category === filterCat) : items;
+    const filtered = (filterCat ? items.filter((it) => it.category === filterCat) : items.slice()).sort((a, b) => {
+      const catDiff = CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category);
+      if (catDiff !== 0) return catDiff;
+      return (a.creditor_name || "").localeCompare(b.creditor_name || "");
+    });
     if (!filtered.length) {
       box.innerHTML = `<div class="empty text-sm">Sin ítems en esta categoría.</div>`;
       return;
     }
     box.innerHTML = `
       <table class="table-compact">
-        <thead><tr><th>Categoría</th><th>Acreedor</th><th>Cuenta</th><th class="cell-num">Saldo</th><th>Burós</th><th>Cartas enviadas</th><th>Estado</th></tr></thead>
+        <thead><tr><th>Categoría</th><th>Acreedor</th><th>Cuenta</th><th class="cell-num">Saldo</th><th class="cell-num">Tarifa</th><th>Burós</th><th>Cartas enviadas</th><th>Estado</th></tr></thead>
         <tbody>
           ${filtered
             .map(
@@ -204,11 +214,14 @@ async function renderPortalCase(content) {
               <td class="row-name">${escapeHtml(it.creditor_name) || "—"}</td>
               <td class="row-sub">${escapeHtml(it.account_number) || "—"}</td>
               <td class="row-sub cell-num">${escapeHtml(it.balance) || "—"}</td>
+              <td class="row-sub cell-num">${money(it.fee)}</td>
               <td class="row-sub">${escapeHtml(it.bureaus) || "—"}</td>
               <td class="row-sub">${it.letters_count || 0}</td>
               <td>${
                 it.removed_status === "eliminado"
-                  ? `<span class="badge badge-eliminada">Removido del reporte</span>`
+                  ? it.billing_status === "pagado"
+                    ? `<span class="badge badge-eliminada">Removido — pagado</span>`
+                    : `<span class="badge badge-pendiente_cobro">Removido — pendiente de pago</span>`
                   : `<span class="badge badge-activa">Todavía en el reporte</span>`
               }</td>
             </tr>`
