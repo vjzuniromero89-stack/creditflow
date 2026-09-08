@@ -118,17 +118,24 @@ function randomPortalPassword(len = 10) {
   for (let i = 0; i < len; i++) out += chars[bytes[i] % chars.length];
   return out;
 }
+// Usuario corto y f\u00e1cil de decir/escribir: primeras 3 letras del primer nombre + primeras 3
+// letras del \u00faltimo apellido + el a\u00f1o actual (ej. "Nelson Cirilo Jorge Fernandez" -> "nelfer2026").
+// Antes era el nombre completo separado por puntos (ej. "nelson.cirilo.jorge.fernandez") \u2014 muy
+// largo y f\u00e1cil de teclear mal, sobre todo en el celular.
 function slugifyUsername(fullName) {
-  const base = String(fullName || "cliente")
+  const parts = String(fullName || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "") // quita acentos
     .toLowerCase()
-    .replace(/[^a-z0-9\s.]/g, "")
+    .replace(/[^a-z\s]/g, "")
     .trim()
     .split(/\s+/)
-    .filter(Boolean)
-    .join(".");
-  return base || "cliente";
+    .filter(Boolean);
+  if (!parts.length) return `cliente${new Date().getFullYear()}`;
+  const first = parts[0];
+  const last = parts.length > 1 ? parts[parts.length - 1] : first;
+  const year = new Date().getFullYear();
+  return `${first.slice(0, 3)}${last.slice(0, 3)}${year}`;
 }
 async function generateUniquePortalUsername(env, fullName) {
   const base = slugifyUsername(fullName);
@@ -387,7 +394,10 @@ async function portalLogin(request, env) {
   if (!env.SESSION_SECRET) return errorJson("Falta configurar la variable de entorno SESSION_SECRET en este Worker de Cloudflare.", 500);
   const body = await readJson(request);
   const username = (body.username || "").trim().toLowerCase();
-  const password = body.password || "";
+  // Se recorta espacio al inicio/final por si se copió junto con un salto de línea (ej. al copiar
+  // "Usuario: ...\nContraseña: ..." completo y pegarlo en el campo) — la contraseña generada nunca
+  // lleva espacios de por sí, así que esto no le quita nada válido.
+  const password = (body.password || "").trim();
   if (!username || !password) return errorJson("Usuario y contraseña son requeridos.");
   const c = await env.DB.prepare(`SELECT * FROM clients WHERE portal_username = ?`).bind(username).first();
   if (!c || !c.portal_password_hash) return errorJson("Usuario o contraseña incorrectos.", 401);
