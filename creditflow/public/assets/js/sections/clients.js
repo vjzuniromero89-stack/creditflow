@@ -5,7 +5,7 @@ import { toast } from "../toast.js";
 import { escapeHtml, formatDate, formatDateTime, initials, statusBadge, debounce } from "../utils.js";
 import { ACTION_LABELS } from "./dashboard.js";
 import { renderClientCreditItems, openCreditItemModal, runSmartGenerateForClient } from "./collections.js";
-import { roundLabel } from "./letters.js";
+import { roundLabel, formatDobForLetter } from "./letters.js";
 import { renderClientDocuments } from "./documents.js";
 import { renderClientCreditScore } from "./creditscore.js";
 import { renderClientAddresses } from "./addresses.js";
@@ -489,6 +489,7 @@ export async function renderClientDetail(container, id) {
           <div><div class="text-muted text-sm">Teléfono</div>${escapeHtml(client.phone) || "—"}</div>
           <div style="grid-column:1/-1"><div class="text-muted text-sm">Dirección</div>${escapeHtml(client.address) || "—"} ${escapeHtml(client.city) || ""} ${escapeHtml(client.state) || ""} ${escapeHtml(client.zip) || ""}</div>
           <div><div class="text-muted text-sm">ID/SSN (últ. 4)</div>${escapeHtml(client.id_last4) || "—"}</div>
+          <div><div class="text-muted text-sm">Fecha de nacimiento</div>${formatDobForLetter(client.date_of_birth) || "—"}</div>
           <div><div class="text-muted text-sm">Cliente desde</div>${formatDate(client.created_at)}</div>
         </div>
         ${client.notes ? `<div style="margin-top:14px"><div class="text-muted text-sm">Notas</div>${escapeHtml(client.notes)}</div>` : ""}
