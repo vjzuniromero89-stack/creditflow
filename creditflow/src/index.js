@@ -2810,14 +2810,19 @@ async function clientPricingUpdate(request, env, user, clientId) {
   const client = await env.DB.prepare(`SELECT id FROM clients WHERE id = ?`).bind(clientId).first();
   if (!client) return errorJson("Cliente no encontrado.", 404);
   const body = await readJson(request);
-  // Un valor vacío/null en el body significa "quita la tarifa personalizada, vuelve a usar la
-  // general"; un número significa "usa este monto para este cliente en esta categoría".
-  const parsed = (v) => {
-    if (v === null || v === undefined || v === "") return null;
+  const current = (await getClientPricingOverrides(env, clientId)) || {};
+  // Esta actualización es PARCIAL: solo se manda la categoría que el usuario acaba de editar, así
+  // que cualquier categoría que NO venga en el body debe quedar exactamente como estaba (no se
+  // borra) — si no, cambiar Charge-offs borraría la tarifa personalizada que ya se había puesto en
+  // Colecciones. Solo un valor explícito null/"" en el body borra el override de esa categoría en
+  // particular; un número lo actualiza.
+  const parsed = (v, fallback) => {
+    if (v === undefined) return fallback === undefined ? null : fallback;
+    if (v === null || v === "") return null;
     const n = Number(v);
-    return Number.isFinite(n) && n >= 0 ? n : null;
+    return Number.isFinite(n) && n >= 0 ? n : fallback === undefined ? null : fallback;
   };
-  const values = ALL_PRICING_CATEGORIES.map((cat) => parsed(body[`fee_${cat}`]));
+  const values = ALL_PRICING_CATEGORIES.map((cat) => parsed(body[`fee_${cat}`], current[`fee_${cat}`]));
   const cols = ALL_PRICING_CATEGORIES.map((cat) => `fee_${cat}`);
   const insertPlaceholders = ["?", ...cols.map(() => "?")].join(", ");
   const updateSet = cols.map((c) => `${c}=excluded.${c}`).join(", ");
