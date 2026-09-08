@@ -9,15 +9,20 @@ import { roundLabel } from "./letters.js";
 const CERTIFIED_MAIL_URL = "https://www.certifiedmaillabels.com/create-address-label";
 
 // Los 3 burós de crédito — la gran mayoría de las cartas "listas para enviar" van a una de estas 3
-// direcciones fijas (ver BUREAU_ADDRESS en collections.js). Agrupar por esto es lo que deja ver de
-// un jalón "tengo 5 cartas listas para Experian" y procesarlas juntas en vez de una por una.
+// direcciones (ver BUREAU_ADDRESS en collections.js). Se usan para mostrar a dónde va cada fila.
 const BUREAUS = ["Equifax", "TransUnion", "Experian"];
-const OTHER_GROUP_KEY = "__otros__";
-const OTHER_GROUP_LABEL = "Directo al acreedor / otros destinatarios";
+
+// Las "Listas para enviar" se agrupan por CLIENTE, no por buró — porque en certifiedmaillabels.com
+// (Excel Batch Labels) el remitente ("From") se pone UNA vez por lote, para TODAS las filas del
+// archivo. Como cada cliente manda su disputa con sus propios datos como remitente (no los de tu
+// negocio — así le llega al buró como si la mandara él/ella directamente), un mismo lote solo puede
+// ser de un cliente a la vez. Agrupando por cliente, cada tarjeta ya es justo ese lote: sus cartas a
+// Equifax/TransUnion/Experian (y a cualquier acreedor directo) listas para subir juntas de un jalón.
 
 // Columnas EXACTAS (mismo orden) que pide la plantilla "Master Import Template" de Excel Batch
 // Labels de certifiedmaillabels.com — así el archivo que armamos aquí se puede subir directo ahí
-// para crear todas las etiquetas de un buró de un jalón, sin escribir nada a mano.
+// para crear todas las etiquetas de un cliente (a los 3 burós y/o acreedores) de un jalón, sin
+// escribir nada a mano.
 const BATCH_CSV_HEADERS = [
   "To Company Name",
   "To Name",
@@ -99,7 +104,7 @@ export async function renderMailings(container) {
     <div class="section-head" style="margin-top:6px">
       <div>
         <h2 style="font-size:16px">Listas para enviar</h2>
-        <p class="text-sm text-muted" style="margin-top:2px">Agrupadas por a dónde van — todas las que van a Equifax, TransUnion o Experian quedan juntas para que las proceses de un jalón.</p>
+        <p class="text-sm text-muted" style="margin-top:2px">Agrupadas por cliente — cada tarjeta trae todas sus cartas (Equifax, TransUnion, Experian, etc.) listas para subir juntas a certifiedmaillabels.com en un solo lote.</p>
       </div>
       <button class="btn btn-danger btn-sm" id="delete-all-ready-btn">${icon("trash")} Borrar todo</button>
     </div>
@@ -139,51 +144,83 @@ export async function renderMailings(container) {
       return;
     }
 
-    // Agrupa por destinatario — los 3 burós primero (en orden fijo), y al final las que van
-    // directo a un acreedor (cada una a su propia dirección, no se pueden agrupar).
+    // Agrupa por cliente (ver nota arriba de por qué, no por buró).
     const groups = new Map();
     for (const l of letters) {
-      const key = BUREAUS.includes(l.recipient_name) ? l.recipient_name : OTHER_GROUP_KEY;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(l);
+      if (!groups.has(l.client_id)) groups.set(l.client_id, []);
+      groups.get(l.client_id).push(l);
     }
-    const orderedKeys = [...BUREAUS.filter((b) => groups.has(b)), ...(groups.has(OTHER_GROUP_KEY) ? [OTHER_GROUP_KEY] : [])];
+    // Los clientes con más cartas listas primero — son los que más rinden procesar en lote.
+    const orderedIds = [...groups.keys()].sort((a, b) => {
+      const diff = groups.get(b).length - groups.get(a).length;
+      return diff !== 0 ? diff : (groups.get(a)[0].client_name || "").localeCompare(groups.get(b)[0].client_name || "");
+    });
 
-    box.innerHTML = orderedKeys.map((key) => renderGroupCard(key, groups.get(key))).join("");
+    box.innerHTML = orderedIds.map((id) => renderClientCard(id, groups.get(id))).join("");
 
-    orderedKeys.forEach((key) => wireGroupCard(key, groups.get(key)));
+    orderedIds.forEach((id) => wireClientCard(id, groups.get(id)));
   }
 
-  function renderGroupCard(key, groupLetters) {
-    const isOther = key === OTHER_GROUP_KEY;
-    const label = isOther ? OTHER_GROUP_LABEL : key;
-    // Cuando es un buró, todas las cartas del grupo comparten la misma dirección de disputa —
-    // se muestra una sola vez arriba para copiarla fácil en vez de tener que verla repetida.
-    const sharedAddress = !isOther && groupLetters[0] ? groupLetters[0].recipient_address : "";
+  function senderFieldRow(label, value) {
+    if (!value) return "";
     return `
-      <div class="card" style="margin-bottom:16px" data-group="${key}">
+      <div class="flex-between" style="padding:2px 0">
+        <div class="text-sm"><span class="text-muted">${escapeHtml(label)}:</span> ${escapeHtml(value)}</div>
+        <button class="btn btn-ghost btn-sm btn-icon" data-copy-value="${escapeHtml(value)}" title="Copiar ${escapeHtml(label.toLowerCase())}">${icon("copy")}</button>
+      </div>
+    `;
+  }
+
+  function renderClientCard(clientId, groupLetters) {
+    const first = groupLetters[0];
+    // Cuenta cuántas van a cada buró para que se vea de un vistazo, sin tener que leer la tabla.
+    const byBureau = BUREAUS.map((b) => ({ b, n: groupLetters.filter((l) => l.recipient_name === b).length })).filter((x) => x.n);
+    const otherCount = groupLetters.length - byBureau.reduce((s, x) => s + x.n, 0);
+
+    const hasFullAddress = first.client_address && first.client_city && first.client_state && first.client_zip;
+
+    return `
+      <div class="card" style="margin-bottom:16px" data-group="${clientId}">
         <div class="flex-between" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
           <div>
-            <h3 style="font-size:15px">${escapeHtml(label)} <span class="text-muted" style="font-weight:400">(${groupLetters.length} carta${groupLetters.length === 1 ? "" : "s"})</span></h3>
-            ${sharedAddress ? `<div class="text-sm text-muted" style="white-space:pre-line;margin-top:2px">${escapeHtml(sharedAddress)}</div>` : ""}
-            ${isOther ? `<div class="text-sm text-muted" style="margin-top:2px">Cada una va a una dirección distinta (la del acreedor) — revisa el Excel descargado antes de subirlo, por si alguna dirección no se separó bien en ciudad/estado/zip.</div>` : ""}
+            <h3 style="font-size:15px">${escapeHtml(first.client_name)} <span class="text-muted" style="font-weight:400">(${groupLetters.length} carta${groupLetters.length === 1 ? "" : "s"})</span></h3>
+            <div class="tag-row" style="margin-top:4px">
+              ${byBureau.map((x) => `<span class="badge badge-activo">${escapeHtml(x.b)} (${x.n})</span>`).join("")}
+              ${otherCount ? `<span class="badge badge-pausado">Directo al acreedor (${otherCount})</span>` : ""}
+            </div>
           </div>
           <div class="flex gap-8" style="flex-wrap:wrap">
-            ${sharedAddress ? `<button class="btn btn-ghost btn-sm" data-copy-address="${key}">${icon("copy")} Copiar dirección</button>` : ""}
-            <button class="btn btn-primary btn-sm" data-download-batch="${key}" title="Genera un archivo con las ${groupLetters.length} direcciones de este grupo, listo para subir a certifiedmaillabels.com → Excel Batch Labels">${icon("download")} Descargar Excel (${groupLetters.length})</button>
+            <button class="btn btn-primary btn-sm" data-download-batch="${clientId}" title="Genera un archivo con las ${groupLetters.length} cartas de este cliente, listo para subir a certifiedmaillabels.com → Excel Batch Labels">${icon("download")} Descargar Excel (${groupLetters.length})</button>
             <a class="btn btn-ghost btn-sm" href="${CERTIFIED_MAIL_URL}" target="_blank" rel="noopener">${icon("link")} Crear etiquetas</a>
           </div>
         </div>
+
+        <div class="card" style="background:rgba(255,255,255,.03);padding:10px;margin-bottom:12px">
+          <div class="text-sm text-muted" style="margin-bottom:4px">Remitente sugerido — pégalo en "From Name" / "From Return Address" al subir el Excel, así la carta le llega al buró como si la mandara ${escapeHtml(first.client_name)} directamente (deja "From Company" en blanco):</div>
+          ${
+            hasFullAddress
+              ? `
+            ${senderFieldRow("Nombre", first.client_name)}
+            ${senderFieldRow("Dirección", first.client_address)}
+            ${senderFieldRow("Ciudad", first.client_city)}
+            ${senderFieldRow("Estado", first.client_state)}
+            ${senderFieldRow("Zip", first.client_zip)}
+            ${senderFieldRow("Teléfono", first.client_phone)}
+          `
+              : `<div class="text-sm" style="color:var(--amber)">⚠️ A este cliente le falta dirección completa en su ficha (calle, ciudad, estado o zip) — agrégala antes de enviar, la necesitas para el remitente.</div>`
+          }
+        </div>
+
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Carta</th><th>Cliente</th><th>Ronda</th><th style="min-width:170px">Rastreo (USPS)</th><th style="min-width:100px">Costo</th><th></th></tr></thead>
+            <thead><tr><th>Carta</th><th>Va a</th><th>Ronda</th><th style="min-width:170px">Rastreo (USPS)</th><th style="min-width:100px">Costo</th><th></th></tr></thead>
             <tbody>
               ${groupLetters
                 .map(
                   (l) => `
                 <tr data-id="${l.id}">
                   <td class="row-name">${escapeHtml(l.title)}</td>
-                  <td>${escapeHtml(l.client_name)}</td>
+                  <td>${escapeHtml(l.recipient_name) || "—"}</td>
                   <td>${roundLabel(l.round_number)}</td>
                   <td><input type="text" class="tracking-input" data-letter="${l.id}" placeholder="9407 3000 0000..." /></td>
                   <td><input type="text" class="cost-input" data-letter="${l.id}" placeholder="$7.28" style="width:90px" /></td>
@@ -195,14 +232,14 @@ export async function renderMailings(container) {
           </table>
         </div>
         <div class="form-actions" style="margin-top:12px">
-          <button class="btn btn-primary" data-send-group="${key}">${icon("send")} Registrar ${groupLetters.length > 1 ? `los envíos de ${label}` : "envío"}</button>
+          <button class="btn btn-primary" data-send-group="${clientId}">${icon("send")} Registrar ${groupLetters.length > 1 ? "estos envíos" : "envío"}</button>
         </div>
       </div>
     `;
   }
 
-  function wireGroupCard(key, groupLetters) {
-    const card = document.querySelector(`[data-group="${CSS.escape(key)}"]`);
+  function wireClientCard(clientId, groupLetters) {
+    const card = document.querySelector(`[data-group="${CSS.escape(String(clientId))}"]`);
     if (!card) return;
 
     card.querySelectorAll("[data-open]").forEach((b) =>
@@ -212,29 +249,27 @@ export async function renderMailings(container) {
       })
     );
 
-    const copyBtn = card.querySelector("[data-copy-address]");
-    if (copyBtn) {
-      copyBtn.addEventListener("click", async () => {
-        const address = groupLetters[0].recipient_address || "";
+    card.querySelectorAll("[data-copy-value]").forEach((b) =>
+      b.addEventListener("click", async () => {
         try {
-          await navigator.clipboard.writeText(address);
-          toast("Dirección copiada", "success");
+          await navigator.clipboard.writeText(b.dataset.copyValue);
+          toast("Copiado", "success");
         } catch {
-          toast("No se pudo copiar — cópiala manualmente", "error");
+          toast("No se pudo copiar — cópialo manualmente", "error");
         }
-      });
-    }
+      })
+    );
 
-    const downloadBtn = card.querySelector(`[data-download-batch="${CSS.escape(key)}"]`);
+    const downloadBtn = card.querySelector(`[data-download-batch="${CSS.escape(String(clientId))}"]`);
     downloadBtn.addEventListener("click", () => {
       const csv = buildBatchCsv(groupLetters);
-      const safeLabel = (key === OTHER_GROUP_KEY ? "otros" : key).toLowerCase();
+      const safeName = (groupLetters[0].client_name || "cliente").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
       const stamp = new Date().toISOString().slice(0, 10);
-      downloadTextFile(`creditflow-envio-${safeLabel}-${stamp}.csv`, csv, "text/csv;charset=utf-8;");
+      downloadTextFile(`creditflow-envio-${safeName}-${stamp}.csv`, csv, "text/csv;charset=utf-8;");
       toast("Archivo descargado — súbelo en certifiedmaillabels.com → Excel Batch Labels", "success");
     });
 
-    const sendBtn = card.querySelector(`[data-send-group="${CSS.escape(key)}"]`);
+    const sendBtn = card.querySelector(`[data-send-group="${CSS.escape(String(clientId))}"]`);
     sendBtn.addEventListener("click", async () => {
       // Solo se registran las filas donde sí se puso número de rastreo — así puede ir creando las
       // etiquetas y pegando el tracking de a poco, y mandar solo las que ya tiene listas.
