@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS credit_items (
   client_id       INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   category        TEXT NOT NULL DEFAULT 'otro',
   creditor_name   TEXT NOT NULL,
+  creditor_address TEXT,
   account_number  TEXT,
   status_raw      TEXT,
   balance         TEXT,
