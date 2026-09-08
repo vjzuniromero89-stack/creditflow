@@ -196,6 +196,11 @@ function creditItemFormHtml(item = {}, lockClient) {
           </select>
         </div>
         <div class="field" style="grid-column:1/-1"><label>Acreedor / cobrador *</label><input type="text" name="creditor_name" required value="${escapeHtml(item.creditor_name)}" /></div>
+        <div class="field" style="grid-column:1/-1">
+          <label>Dirección postal del acreedor / cobrador</label>
+          <input type="text" name="creditor_address" placeholder="Ej. Nombre de la empresa, calle, ciudad, estado, código postal" value="${escapeHtml(item.creditor_address)}" />
+          <span class="text-sm text-muted">Necesaria para poder enviarle una carta directa (Disputa Directa / Aviso Final) más adelante — no hace falta para las cartas a los burós.</span>
+        </div>
         <div class="field"><label>Número de cuenta</label><input type="text" name="account_number" value="${escapeHtml(item.account_number)}" /></div>
         <div class="field"><label>Saldo</label><input type="text" name="balance" placeholder="$0" value="${escapeHtml(item.balance)}" /></div>
         <div class="field"><label>Estatus (texto del reporte)</label><input type="text" name="status_raw" placeholder="Ej. COLLECTION" value="${escapeHtml(item.status_raw)}" /></div>
@@ -247,6 +252,23 @@ export function openCreditItemModal({ existing, clientId, onSaved }) {
 const BUREAUS = ["Equifax", "TransUnion", "Experian"];
 const ESCALATE_AFTER_DAYS = 30;
 
+// Direcciones postales oficiales de disputa de los 3 burós — las mismas que ya se usan en las
+// plantillas por defecto (ver BUREAU_EQUIFAX/BUREAU_TRANSUNION/BUREAU_EXPERIAN en src/index.js).
+// Sirven para llenar {{destinatario_direccion}} y la columna recipient_address de la carta.
+const BUREAU_ADDRESS = {
+  Equifax: "Equifax Information Services LLC\nP.O. Box 740256\nAtlanta, GA 30374",
+  TransUnion: "TransUnion LLC Consumer Dispute Center\nP.O. Box 2000\nChester, PA 19016",
+  Experian: "Experian\nP.O. Box 4500\nAllen, TX 75013",
+};
+
+// Para las cartas Ronda 1/2/3 (a los burós) usamos la dirección fija de arriba; para las cartas
+// directas al acreedor original (Disputa Directa / Aviso Final) usamos la que se haya guardado
+// en el ítem (campo "Dirección del acreedor / cobrador").
+function addressForPlan(plan, item) {
+  if (plan.stage === "creditor_direct" || plan.stage === "final_notice") return (item && item.creditor_address) || "";
+  return BUREAU_ADDRESS[plan.bureau] || "";
+}
+
 function daysSince(dateStr) {
   if (!dateStr) return Infinity;
   const iso = dateStr.includes("T") ? dateStr : `${dateStr.replace(" ", "T")}Z`;
@@ -260,7 +282,7 @@ function normalizeBureau(name) {
   return found || null;
 }
 
-function buildLetterMap(client, item, bureau, roundNumber) {
+function buildLetterMap(client, item, recipientName, roundNumber, recipientAddress = "") {
   return {
     cliente_nombre: client.full_name,
     cliente_direccion: client.address || "",
@@ -268,8 +290,8 @@ function buildLetterMap(client, item, bureau, roundNumber) {
     cliente_id_last4: client.id_last4 || "",
     cliente_fecha_nacimiento: formatDobForLetter(client.date_of_birth),
     fecha: todayLong(),
-    destinatario_nombre: bureau,
-    destinatario_direccion: "",
+    destinatario_nombre: recipientName,
+    destinatario_direccion: recipientAddress || "",
     numero_cuenta: item ? item.account_number || "" : "",
     acreedor_nombre: item ? item.creditor_name || "" : "",
     motivo_disputa: item ? MOTIVO_BY_CATEGORY[item.category] || "" : "",
@@ -278,20 +300,33 @@ function buildLetterMap(client, item, bureau, roundNumber) {
 }
 
 /**
- * Decide qué cartas hacen falta para un ítem, según la estrategia:
- * Paso 0 (una vez por cliente/buró) → limpieza de información personal.
- * Luego Ronda 1 → Ronda 2 → Ronda 3 por ítem/buró, esperando ESCALATE_AFTER_DAYS
- * días desde que la carta anterior se marcó como enviada antes de sugerir la siguiente.
+ * Decide qué cartas hacen falta para un ítem, según la estrategia completa:
+ *  1. Paso 0 (una vez por cliente/buró) → limpieza de información personal.
+ *  2. Ronda 1 → Ronda 2 → Ronda 3 por ítem/buró, esperando ESCALATE_AFTER_DAYS días desde que
+ *     la carta anterior se marcó como enviada antes de sugerir la siguiente.
+ *  3. Si el ítem sigue activo después de la Ronda 3 con TODOS sus burós, se sigue directo con
+ *     el acreedor original: Disputa Directa (Ronda 4) → espera → Aviso Final (Ronda 5).
+ *  4. En cualquier momento en que el ítem se detecte "eliminado" (al reimportar un reporte de
+ *     crédito actualizado), se deja de generar cualquier carta nueva para ese ítem.
  */
 function planLettersForItem(item, allClientLetters, templates) {
+  const toGenerate = [];
+  const waiting = [];
+  const problems = [];
+
+  if (item.removed_status === "eliminado") {
+    waiting.push(`Este ítem ya se detectó eliminado del reporte — no hace falta seguir disputándolo.`);
+    return { toGenerate, waiting, problems };
+  }
+
   const itemBureaus = (item.bureaus || "")
     .split(",")
     .map(normalizeBureau)
     .filter(Boolean);
 
-  const toGenerate = [];
-  const waiting = [];
-  const problems = [];
+  // Por cada buró: ¿ya agotó sus 3 rondas y ya pasó el plazo de espera después de la última? Solo
+  // cuando TODOS los burós del ítem están en ese punto pasamos a disputar directo con el acreedor.
+  const bureauReadyForCreditor = [];
 
   for (const bureau of itemBureaus) {
     const personalInfoLetter = allClientLetters.find(
@@ -301,30 +336,34 @@ function planLettersForItem(item, allClientLetters, templates) {
       const tpl = templates.find((t) => t.category === "Buró de Crédito — Información Personal" && t.recipient_hint === bureau);
       if (tpl) toGenerate.push({ stage: "personal_info", bureau, round: 0, template: tpl });
       else problems.push(`${bureau}: no encontré la plantilla de "Información Personal" (¿la borraste?).`);
+      bureauReadyForCreditor.push(false);
       continue;
     }
 
-    // Los inquiries no siguen el flujo de Rondas 1/2/3 — es una sola carta de disputa por buró,
-    // usando la plantilla de la categoría "Buró de Crédito — Inquiries".
+    // Los inquiries no siguen el flujo de Rondas 1/2/3 ni escalan al acreedor — es una sola carta
+    // de disputa por buró, usando la plantilla de la categoría "Buró de Crédito — Inquiries".
     if (item.category === "inquiry") {
       const inquiryLetters = allClientLetters.filter((l) => l.credit_item_id === item.id && normalizeBureau(l.recipient_name) === bureau);
       if (inquiryLetters.length) {
         waiting.push(`${bureau}: ya se generó la carta de disputa de este inquiry.`);
+        bureauReadyForCreditor.push(false);
         continue;
       }
       const tpl = templates.find((t) => t.category === "Buró de Crédito — Inquiries" && t.recipient_hint === bureau);
       if (tpl) toGenerate.push({ stage: "inquiry", bureau, round: 1, template: tpl });
       else problems.push(`${bureau}: no encontré la plantilla de "Inquiries" (¿la borraste?).`);
+      bureauReadyForCreditor.push(false);
       continue;
     }
 
     const itemBureauLetters = allClientLetters.filter(
-      (l) => l.credit_item_id === item.id && normalizeBureau(l.recipient_name) === bureau && Number(l.round_number) >= 1
+      (l) => l.credit_item_id === item.id && normalizeBureau(l.recipient_name) === bureau && Number(l.round_number) >= 1 && Number(l.round_number) <= 3
     );
     if (!itemBureauLetters.length) {
       const tpl = templates.find((t) => t.category === "Buró de Crédito — Ronda 1" && t.recipient_hint === bureau);
       if (tpl) toGenerate.push({ stage: "round", bureau, round: 1, template: tpl });
       else problems.push(`${bureau}: no encontré la plantilla de Ronda 1 (¿la borraste?).`);
+      bureauReadyForCreditor.push(false);
       continue;
     }
 
@@ -332,21 +371,62 @@ function planLettersForItem(item, allClientLetters, templates) {
     const latestRound = Number(latest.round_number);
     if (latest.status === "borrador") {
       waiting.push(`${bureau}: ya tiene una carta de Ronda ${latestRound} en borrador esperando tu revisión y envío.`);
-      continue;
-    }
-    if (latestRound >= 3) {
-      waiting.push(`${bureau}: ya está en Ronda 3 (última etapa automática) — el siguiente paso requiere tu revisión manual.`);
+      bureauReadyForCreditor.push(false);
       continue;
     }
     const days = daysSince(latest.updated_at || latest.created_at);
+    if (latestRound >= 3) {
+      if (days < ESCALATE_AFTER_DAYS) {
+        waiting.push(`${bureau}: Ronda 3 enviada hace ${Math.max(0, Math.floor(days))} día(s) — se espera el plazo de ${ESCALATE_AFTER_DAYS} días antes de escalar directo con el acreedor original.`);
+        bureauReadyForCreditor.push(false);
+      } else {
+        bureauReadyForCreditor.push(true);
+      }
+      continue;
+    }
     if (days < ESCALATE_AFTER_DAYS) {
       waiting.push(`${bureau}: Ronda ${latestRound} enviada hace ${Math.max(0, Math.floor(days))} día(s) — se espera el plazo de ${ESCALATE_AFTER_DAYS} días antes de escalar a la siguiente ronda.`);
+      bureauReadyForCreditor.push(false);
       continue;
     }
     const nextRound = latestRound + 1;
     const tpl = templates.find((t) => t.category === `Buró de Crédito — Ronda ${nextRound}` && t.recipient_hint === bureau);
     if (tpl) toGenerate.push({ stage: "round", bureau, round: nextRound, template: tpl });
     else problems.push(`${bureau}: no encontré la plantilla de Ronda ${nextRound} (¿la borraste?).`);
+    bureauReadyForCreditor.push(false);
+  }
+
+  const readyForCreditor = item.category !== "inquiry" && itemBureaus.length > 0 && bureauReadyForCreditor.length === itemBureaus.length && bureauReadyForCreditor.every(Boolean);
+
+  if (readyForCreditor) {
+    const creditorLetters = allClientLetters
+      .filter((l) => l.credit_item_id === item.id && Number(l.round_number) >= 4)
+      .sort((a, b) => Number(a.round_number) - Number(b.round_number));
+
+    if (!item.creditor_address) {
+      problems.push(`Ya se agotaron las 3 rondas con los burós y sigue activo — hace falta la dirección postal de "${item.creditor_name}" para poder escalar directo con el acreedor original (edita el ítem y agrégala).`);
+    } else if (!creditorLetters.length) {
+      const tpl = templates.find((t) => t.category === "Acreedor Original — Disputa Directa");
+      if (tpl) toGenerate.push({ stage: "creditor_direct", bureau: item.creditor_name, round: 4, template: tpl });
+      else problems.push(`No encontré la plantilla de "Disputa Directa al Acreedor Original" (¿la borraste?).`);
+    } else {
+      const latest = creditorLetters[creditorLetters.length - 1];
+      const latestRound = Number(latest.round_number);
+      if (latest.status === "borrador") {
+        waiting.push(`Ya tiene una carta directa al acreedor original (${latestRound === 4 ? "Disputa Directa" : "Aviso Final"}) en borrador esperando tu revisión y envío.`);
+      } else if (latestRound >= 5) {
+        waiting.push(`Ya se envió el Aviso Final al acreedor original — es la última etapa automática. El siguiente paso (negociar pay-for-delete o considerar acción legal) requiere tu revisión manual.`);
+      } else {
+        const days = daysSince(latest.updated_at || latest.created_at);
+        if (days < ESCALATE_AFTER_DAYS) {
+          waiting.push(`Disputa Directa enviada al acreedor original hace ${Math.max(0, Math.floor(days))} día(s) — se espera el plazo de ${ESCALATE_AFTER_DAYS} días antes de escalar a Aviso Final.`);
+        } else {
+          const tpl = templates.find((t) => t.category === "Acreedor Original — Aviso Final");
+          if (tpl) toGenerate.push({ stage: "final_notice", bureau: item.creditor_name, round: 5, template: tpl });
+          else problems.push(`No encontré la plantilla de "Aviso Final / Intento de Demanda" (¿la borraste?).`);
+        }
+      }
+    }
   }
 
   return { toGenerate, waiting, problems };
@@ -358,7 +438,17 @@ function showGenerateResultsModal({ created, waiting, problems }) {
       (c) => `
       <tr>
         <td>${escapeHtml(c.item ? c.item.creditor_name || "—" : "—")}</td>
-        <td>${c.stage === "personal_info" ? "Información personal" : c.stage === "inquiry" ? "Disputa de inquiry" : `Ronda ${c.round}`}</td>
+        <td>${
+          c.stage === "personal_info"
+            ? "Información personal"
+            : c.stage === "inquiry"
+            ? "Disputa de inquiry"
+            : c.stage === "creditor_direct"
+            ? "Disputa Directa (acreedor original)"
+            : c.stage === "final_notice"
+            ? "Aviso Final (acreedor original)"
+            : `Ronda ${c.round}`
+        }</td>
         <td>${escapeHtml(c.bureau)}</td>
         <td><a href="#/cartas/${c.letter.id}">Ver carta</a></td>
       </tr>`
@@ -412,7 +502,8 @@ export async function runSmartGenerate({ items, clientId, onSaved }) {
       waitingAll.push(...waiting.map((w) => `${item.creditor_name || "Ítem"} — ${w}`));
       problemsAll.push(...problems.map((w) => `${item.creditor_name || "Ítem"} — ${w}`));
       for (const plan of toGenerate) {
-        const map = buildLetterMap(client, item, plan.bureau, plan.round);
+        const recipientAddress = addressForPlan(plan, item);
+        const map = buildLetterMap(client, item, plan.bureau, plan.round, recipientAddress);
         const renderedBody = renderTemplate(plan.template.body, map);
         const title = plan.stage === "personal_info" ? plan.template.name : `${plan.template.name} — ${item.creditor_name || ""}`.trim();
         const { letter } = await api.post("/letters", {
@@ -421,6 +512,7 @@ export async function runSmartGenerate({ items, clientId, onSaved }) {
           credit_item_id: plan.stage === "personal_info" ? null : item.id,
           title,
           recipient_name: plan.bureau,
+          recipient_address: recipientAddress,
           round_number: plan.round,
           body: renderedBody,
         });
@@ -488,7 +580,7 @@ export async function openGenerateLetterModal({ item, onSaved }) {
       cliente_fecha_nacimiento: formatDobForLetter(client.date_of_birth),
       fecha: todayLong(),
       destinatario_nombre: fd.get("recipient_name") || "",
-      destinatario_direccion: "",
+      destinatario_direccion: BUREAU_ADDRESS[normalizeBureau(fd.get("recipient_name"))] || item.creditor_address || "",
       numero_cuenta: item.account_number || "",
       acreedor_nombre: item.creditor_name || "",
       motivo_disputa: fd.get("motivo") || "",
@@ -502,6 +594,7 @@ export async function openGenerateLetterModal({ item, onSaved }) {
         credit_item_id: item.id,
         title: `${template.name} — ${item.creditor_name || ""}`.trim(),
         recipient_name: fd.get("recipient_name") || template.recipient_hint || "",
+        recipient_address: map.destinatario_direccion,
         round_number: Number(fd.get("round_number")) || 1,
         body: renderedBody,
       });
