@@ -682,9 +682,11 @@ export async function renderClientCreditItems(container, clientId, earningsBox) 
     return;
   }
 
-  // Pestañas por categoría — solo se muestran las categorías que este cliente realmente tiene.
+  // Pestañas por categoría — se muestran las categorías que este cliente realmente tiene, más
+  // "Inquiry" siempre (aunque tenga 0) para que quede claro que el sistema sí revisó esa sección al
+  // importar el reporte, en vez de que simplemente desaparezca cuando no hay ninguno.
   // Clic en una pestaña filtra la tabla de abajo a solo esa categoría (ej. Charge-offs).
-  const categoriesPresent = [...new Set(credit_items.map((it) => it.category))];
+  const categoriesPresent = [...new Set([...credit_items.map((it) => it.category), "inquiry"])];
   container.innerHTML = `
     <div class="tag-row" id="credit-items-cat-filters" style="margin-bottom:12px"></div>
     <div class="table-wrap"><div id="credit-items-table"></div></div>

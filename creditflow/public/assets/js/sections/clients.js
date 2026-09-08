@@ -809,6 +809,9 @@ export async function renderClientDetail(container, id) {
       if (r.client_fields_filled && r.client_fields_filled.length) {
         toast(`Se completaron datos del cliente que estaban vacíos: ${r.client_fields_filled.join(", ")}`, "success");
       }
+      if (r.scores_imported) {
+        toast(`📈 ${r.scores_imported} score(s) nuevo(s) agregado(s) a "Credit Score" desde el reporte`, "success");
+      }
       // Recarga toda la ficha (no solo la tabla de ítems) para reflejar los datos del cliente que
       // se hayan podido rellenar automáticamente y el historial de direcciones actualizado.
       renderClientDetail(container, id);
