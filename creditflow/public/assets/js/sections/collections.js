@@ -147,11 +147,7 @@ export async function renderEarningsPanel(container, clientId) {
               <tr data-cat-row="${c.category}">
                 <td class="row-name">${escapeHtml(c.label)}</td>
                 <td class="row-sub cell-num">
-                  <div class="flex gap-6" style="justify-content:flex-end;align-items:center">
-                    <input type="number" step="1" min="0" class="tarifa-input" data-cat="${c.category}" value="${Number(c.fee)}" style="width:76px;text-align:right" title="${c.is_custom ? "Tarifa personalizada" : "Tarifa general (Configuración)"}" />
-                    ${c.is_custom ? `<button type="button" class="btn btn-ghost btn-sm" data-reset-tarifa="${c.category}" title="Quitar tarifa personalizada — volver a usar la general" style="padding:0 4px">↺</button>` : ""}
-                  </div>
-                </td>
+                  <input type="number" step="1" min="0" class="tarifa-input" data-cat="${c.category}" value="${Number(c.fee)}" style="width:76px;text-align:right" />
                 <td class="cell-num"><span class="count-pill">${c.pending_count + c.real_count}</span></td>
                 <td class="row-sub cell-num">${c.pending_count} · ${money(c.pending_amount)}</td>
                 <td class="cell-num"><strong>${c.real_count} · ${money(c.real_amount)}</strong></td>
@@ -193,18 +189,6 @@ export async function renderEarningsPanel(container, clientId) {
       } catch (err) {
         toast(err.message, "error");
         renderEarningsPanel(container, clientId);
-      }
-    });
-  });
-  container.querySelectorAll("[data-reset-tarifa]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const cat = btn.dataset.resetTarifa;
-      try {
-        await api.put(`/clients/${clientId}/pricing`, { [`fee_${cat}`]: null });
-        toast("Tarifa personalizada eliminada — usando la general", "success");
-        renderEarningsPanel(container, clientId);
-      } catch (err) {
-        toast(err.message, "error");
       }
     });
   });
