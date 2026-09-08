@@ -114,8 +114,8 @@ export async function renderEarningsPanel(container, clientId) {
   if (!rows.length) {
     container.innerHTML = `
       <div class="card" style="margin-bottom:16px">
-        <h4 style="font-size:14px;margin-bottom:4px">💰 Ganancia de este cliente</h4>
-        <p class="text-sm text-muted" style="margin:0">Todavía no hay ítems de colección, pago tardío o inquiry para este cliente. En cuanto importes su reporte de crédito, aquí verás cuánto ganarías si se logran borrar, y cuánto ya es ganancia real.</p>
+        <h4 style="font-size:14px;margin-bottom:4px">💰 Ganancia</h4>
+        <p class="text-sm text-muted" style="margin:0">Todavía no hay ítems de colección, pago tardío o inquiry. En cuanto importes el reporte de crédito, aquí verás cuánto ganarías si se logran borrar, y cuánto ya es ganancia real.</p>
       </div>`;
     return;
   }
@@ -124,7 +124,7 @@ export async function renderEarningsPanel(container, clientId) {
 
   container.innerHTML = `
     <div class="card" style="margin-bottom:16px">
-      <h4 style="font-size:14px;margin-bottom:10px">💰 Ganancia de este cliente <span class="text-sm text-muted">— ${totalCount} ítem(s) en total</span></h4>
+      <h4 style="font-size:14px;margin-bottom:10px">💰 Ganancia <span class="text-sm text-muted">— ${totalCount} ítem(s) en total</span></h4>
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px">
         <div class="card" style="padding:12px">
           <div class="text-sm text-muted">Ganancia pendiente <span class="text-sm">(aún en el reporte)</span></div>
@@ -148,7 +148,7 @@ export async function renderEarningsPanel(container, clientId) {
                 <td class="row-name">${escapeHtml(c.label)}</td>
                 <td class="row-sub cell-num">
                   <div class="flex gap-6" style="justify-content:flex-end;align-items:center">
-                    <input type="number" step="0.01" min="0" class="tarifa-input" data-cat="${c.category}" value="${Number(c.fee).toFixed(2)}" style="width:76px;text-align:right" title="${c.is_custom ? "Tarifa personalizada" : "Tarifa general (Configuración)"}" />
+                    <input type="number" step="1" min="0" class="tarifa-input" data-cat="${c.category}" value="${Number(c.fee)}" style="width:76px;text-align:right" title="${c.is_custom ? "Tarifa personalizada" : "Tarifa general (Configuración)"}" />
                     ${c.is_custom ? `<button type="button" class="btn btn-ghost btn-sm" data-reset-tarifa="${c.category}" title="Quitar tarifa personalizada — volver a usar la general" style="padding:0 4px">↺</button>` : ""}
                   </div>
                 </td>
