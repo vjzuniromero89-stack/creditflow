@@ -676,7 +676,7 @@ const TPL_CLIENT_HEADER = `{{cliente_nombre}}
 {{cliente_direccion}}
 {{cliente_ciudad_estado_zip}}
 
-Social Security Number (last 4 digits): XXX-XX-{{cliente_id_last4}}
+SS: XXX-XX-{{cliente_id_last4}}
 
 Date of birth: {{cliente_fecha_nacimiento}}
 
@@ -2773,9 +2773,63 @@ async function pricingUpdate(request, env, user) {
   return json({ pricing: await getPricingSettings(env) });
 }
 
-function feeForCategory(category, pricing) {
+function feeForCategory(category, pricing, overrides) {
   const col = PRICING_FEE_COLUMN[category];
-  return col ? Number(pricing[col]) || 0 : 0;
+  if (!col) return 0;
+  if (overrides && overrides[col] !== undefined && overrides[col] !== null) return Number(overrides[col]) || 0;
+  return Number(pricing[col]) || 0;
+}
+
+// Tarifas personalizadas por cliente (tabla client_pricing) — cada columna es NULL a menos que el
+// usuario haya puesto un monto manual para ese cliente/categoría desde la ficha del cliente
+// (panel de Ganancia, columna "Tarifa"). NULL = usa la tarifa general de Configuración.
+async function getClientPricingOverrides(env, clientId) {
+  if (!clientId) return null;
+  const row = await env.DB.prepare(`SELECT * FROM client_pricing WHERE client_id = ?`).bind(clientId).first();
+  return row || null;
+}
+
+async function getAllClientPricingOverrides(env) {
+  const { results } = await env.DB.prepare(`SELECT * FROM client_pricing`).all();
+  return new Map((results || []).map((row) => [row.client_id, row]));
+}
+
+async function clientPricingGet(env, clientId) {
+  const client = await env.DB.prepare(`SELECT id FROM clients WHERE id = ?`).bind(clientId).first();
+  if (!client) return errorJson("Cliente no encontrado.", 404);
+  const pricing = await getPricingSettings(env);
+  const overrides = await getClientPricingOverrides(env, clientId);
+  const effective = {};
+  ALL_PRICING_CATEGORIES.forEach((cat) => {
+    effective[`fee_${cat}`] = feeForCategory(cat, pricing, overrides);
+  });
+  return json({ pricing: effective, overrides: overrides || {}, default_pricing: pricing });
+}
+
+async function clientPricingUpdate(request, env, user, clientId) {
+  const client = await env.DB.prepare(`SELECT id FROM clients WHERE id = ?`).bind(clientId).first();
+  if (!client) return errorJson("Cliente no encontrado.", 404);
+  const body = await readJson(request);
+  // Un valor vacío/null en el body significa "quita la tarifa personalizada, vuelve a usar la
+  // general"; un número significa "usa este monto para este cliente en esta categoría".
+  const parsed = (v) => {
+    if (v === null || v === undefined || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+  const values = ALL_PRICING_CATEGORIES.map((cat) => parsed(body[`fee_${cat}`]));
+  const cols = ALL_PRICING_CATEGORIES.map((cat) => `fee_${cat}`);
+  const insertPlaceholders = ["?", ...cols.map(() => "?")].join(", ");
+  const updateSet = cols.map((c) => `${c}=excluded.${c}`).join(", ");
+  await env.DB
+    .prepare(
+      `INSERT INTO client_pricing (client_id, ${cols.join(", ")}, updated_at) VALUES (${insertPlaceholders}, datetime('now'))
+       ON CONFLICT (client_id) DO UPDATE SET ${updateSet}, updated_at=datetime('now')`
+    )
+    .bind(clientId, ...values)
+    .run();
+  await logActivity(env.DB, { entityType: "client", entityId: clientId, action: "tarifas_cliente_actualizadas", userId: user.uid });
+  return clientPricingGet(env, clientId);
 }
 
 // Un ítem negativo que reporta, por ejemplo, Equifax + TransUnion + Experian NO es una sola
@@ -2828,6 +2882,7 @@ async function getCreditItemsForEarnings(env, clientId) {
 // Si se pasa clientId, es el resumen de ese cliente; si no, es el global (todos los clientes).
 async function creditItemsEarnings(request, env, clientId) {
   const pricing = await getPricingSettings(env);
+  const overrides = await getClientPricingOverrides(env, clientId);
   const items = await getCreditItemsForEarnings(env, clientId);
 
   const byCategory = {};
@@ -2844,12 +2899,14 @@ async function creditItemsEarnings(request, env, clientId) {
   });
 
   const categories = Object.entries(byCategory).map(([category, c]) => {
-    const fee = feeForCategory(category, pricing);
+    const fee = feeForCategory(category, pricing, overrides);
     const realCount = c.pagado + c.porCobrar;
+    const overrideCol = PRICING_FEE_COLUMN[category];
     return {
       category,
       label: PRICING_CATEGORY_LABEL[category],
       fee,
+      is_custom: !!(overrides && overrides[overrideCol] !== undefined && overrides[overrideCol] !== null),
       pending_count: c.activo,
       pending_amount: fee * c.activo,
       real_count: realCount,
@@ -2884,11 +2941,12 @@ async function creditItemsEarnings(request, env, clientId) {
 // creditItemsEarnings, cada ítem cuenta una vez por cada buró que lo reporta.
 async function creditItemsEarningsByClient(env) {
   const pricing = await getPricingSettings(env);
+  const overridesByClient = await getAllClientPricingOverrides(env);
   const rows = await getCreditItemsForEarnings(env, null);
 
   const byClient = new Map();
   rows.forEach((row) => {
-    const fee = feeForCategory(row.category, pricing);
+    const fee = feeForCategory(row.category, pricing, overridesByClient.get(row.client_id));
     if (!PRICING_FEE_COLUMN[row.category]) return;
     const n = bureauCountForItem(row.bureaus);
     if (!byClient.has(row.client_id)) {
@@ -3661,6 +3719,9 @@ async function routeApi(request, env, path, user) {
 
     if (segs.length === 4 && segs[3] === "freezes" && method === "GET") return clientFreezesList(env, segs[2]);
     if (segs.length === 5 && segs[3] === "freezes" && method === "PUT") return clientFreezeUpdate(request, env, user, segs[2], segs[4]);
+
+    if (segs.length === 4 && segs[3] === "pricing" && method === "GET") return clientPricingGet(env, segs[2]);
+    if (segs.length === 4 && segs[3] === "pricing" && method === "PUT") return clientPricingUpdate(request, env, user, segs[2]);
   }
 
   if (segs[1] === "credit-items") {
