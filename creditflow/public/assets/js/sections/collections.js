@@ -271,7 +271,15 @@ export function openCreditItemModal({ existing, clientId, onSaved }) {
 /* Estrategia automática de disputa                                    */
 /* ------------------------------------------------------------------ */
 const BUREAUS = ["Equifax", "TransUnion", "Experian"];
-const ESCALATE_AFTER_DAYS = 30;
+// FCRA le da al buró 30 días para investigar (hasta 45 si se manda documentación adicional durante
+// esos 30 días, o 45 fijos si la disputa vino del reporte de crédito anual gratuito). 40 días de
+// margen en vez de 30 justos da colchón para el tiempo de ida y vuelta del correo certificado y el
+// procesamiento interno del buró, que casi nunca caben exactos en el plazo legal mínimo.
+const ESCALATE_AFTER_DAYS = 40;
+// Cuánto se espera después de que la carta de "Información Personal" (Paso 0) se marca como
+// enviada, antes de generar la Ronda 1 para ese buró. Es un plazo aparte de ESCALATE_AFTER_DAYS
+// (que es el que se usa entre rondas 1→2→3 y hacia el acreedor original).
+const PERSONAL_INFO_WAIT_DAYS = 7;
 
 // Direcciones postales oficiales de disputa de los 3 burós — las mismas que ya se usan en las
 // plantillas por defecto (ver BUREAU_EQUIFAX/BUREAU_TRANSUNION/BUREAU_EXPERIAN en src/index.js).
@@ -357,6 +365,23 @@ function planLettersForItem(item, allClientLetters, templates) {
       const tpl = templates.find((t) => t.category === "Buró de Crédito — Información Personal" && t.recipient_hint === bureau);
       if (tpl) toGenerate.push({ stage: "personal_info", bureau, round: 0, template: tpl });
       else problems.push(`${bureau}: no encontré la plantilla de "Información Personal" (¿la borraste?).`);
+      bureauReadyForCreditor.push(false);
+      continue;
+    }
+
+    // No se genera Ronda 1 en el mismo lote que la carta de "Información Personal" — primero hay
+    // que mandarla (no basta con que exista en borrador) y esperar PERSONAL_INFO_WAIT_DAYS días
+    // desde que se marcó como enviada, antes de seguir con la Ronda 1 de ese buró.
+    if (personalInfoLetter.status === "borrador") {
+      waiting.push(`${bureau}: la carta de "Información Personal" está en borrador — revísala y envíala antes de generar la Ronda 1.`);
+      bureauReadyForCreditor.push(false);
+      continue;
+    }
+    const daysSincePersonalInfo = daysSince(personalInfoLetter.updated_at || personalInfoLetter.created_at);
+    if (daysSincePersonalInfo < PERSONAL_INFO_WAIT_DAYS) {
+      waiting.push(
+        `${bureau}: "Información Personal" enviada hace ${Math.max(0, Math.floor(daysSincePersonalInfo))} día(s) — se espera el plazo de ${PERSONAL_INFO_WAIT_DAYS} días antes de generar la Ronda 1.`
+      );
       bureauReadyForCreditor.push(false);
       continue;
     }
