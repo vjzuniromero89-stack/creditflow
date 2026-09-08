@@ -223,6 +223,15 @@ svg { vertical-align: middle; }
 .card-hover { transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
 .card-hover:hover { transform: translateY(-2px); border-color: var(--border-strong); box-shadow: 0 14px 34px -18px rgba(99,102,241,.55); }
 
+.tpl-folder { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 16px; }
+.tpl-folder + .tpl-folder { margin-top: 14px; }
+.tpl-folder summary { list-style: none; color: var(--text-1); }
+.tpl-folder summary::-webkit-details-marker { display: none; }
+.tpl-folder summary::before { content: "▸"; display: inline-block; margin-right: 2px; transition: transform .15s ease; color: var(--text-2); }
+.tpl-folder[open] summary::before { transform: rotate(90deg); }
+.tpl-folder summary:hover { color: var(--purple); }
+.tpl-folder > .grid { padding-bottom: 16px; }
+
 .section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
 .section-head h2 { font-size: 21px; }
 .section-head .sub { color: var(--text-2); font-size: 13px; margin-top: 4px; }
