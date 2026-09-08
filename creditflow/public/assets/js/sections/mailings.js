@@ -65,14 +65,24 @@ function csvEscapeCell(value) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+// certifiedmaillabels.com marca como inválido para USPS cualquier guión largo/mediano ("—"/"–") u
+// otros símbolos "tipográficos" (comillas curvas, etc.) — varios nombres de plantilla en CreditFlow
+// usan "—" (ej. "Paso 0 — Limpieza de Información Personal"), así que se sanea aquí para que no
+// importe si el texto original (título de la carta, nombre del cliente, etc.) lo trae o no.
+function sanitizeForUspsBatch(value) {
+  return String(value ?? "")
+    .replace(/[‒-―−]/g, "-") // guión mediano/largo/menos → guión normal
+    .replace(/[‘’]/g, "'") // comillas simples curvas → recta
+    .replace(/[“”]/g, '"'); // comillas dobles curvas → recta
+}
+
 function buildBatchCsv(groupLetters) {
   const rows = groupLetters.map((l) => {
     const a = parseRecipientAddress(l.recipient_address);
     // Custom Field1 y 5 quedan como referencia — así en los reportes de certifiedmaillabels.com se
     // puede identificar a qué cliente/carta de CreditFlow corresponde cada etiqueta.
-    // Guión normal (no "—") en Custom Field1 — certifiedmaillabels.com marca el guión largo como
-    // carácter inválido para las especificaciones de USPS.
-    return ["", a.name, a.line1, a.line2, a.city, a.state, a.zip, "", "", `${l.client_name} - ${l.title}`, "", "", "", `CF-${l.id}`];
+    const custom1 = sanitizeForUspsBatch(`${l.client_name} - ${l.title}`);
+    return ["", a.name, a.line1, a.line2, a.city, a.state, a.zip, "", "", custom1, "", "", "", `CF-${l.id}`];
   });
   return [BATCH_CSV_HEADERS, ...rows].map((r) => r.map(csvEscapeCell).join(",")).join("\r\n");
 }
