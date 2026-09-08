@@ -157,8 +157,8 @@ async function assignPortalCredentials(env, clientId, fullName, keepUsername) {
 // cualquier fila de cliente antes de mandarla en una respuesta JSON.
 function sanitizeClient(c) {
   if (!c) return c;
-  const { portal_password_hash, portal_password_salt, ...rest } = c;
-  return rest;
+  const { portal_password_hash, portal_password_salt, ssn_full_enc, ...rest } = c;
+  return { ...rest, has_ssn_full: !!ssn_full_enc };
 }
 
 async function hmacSign(message, secret) {
@@ -184,6 +184,48 @@ async function verifyToken(token, secret) {
   } catch {
     return null;
   }
+}
+
+/* ------------------------------ Cifrado del SSN completo ------------------------------
+   A diferencia de id_last4 (los últimos 4 dígitos, siempre en texto plano), el SSN completo del
+   cliente se guarda cifrado con AES-GCM usando el secreto PII_ENCRYPTION_KEY (Runtime secret en
+   Cloudflare, igual que SESSION_SECRET). Nunca se manda en las respuestas normales de /clients —
+   solo POST /clients/:id/ssn/reveal lo descifra bajo demanda, y cada vez que se usa queda
+   registrado en la bitácora de actividad para poder auditar quién lo consultó y cuándo. */
+function rawBytesToBase64(bytes) {
+  let bin = "";
+  bytes.forEach((b) => (bin += String.fromCharCode(b)));
+  return btoa(bin);
+}
+function base64ToRawBytes(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+async function importSsnKey(env) {
+  if (!env.PII_ENCRYPTION_KEY) return null;
+  const raw = new TextEncoder().encode(env.PII_ENCRYPTION_KEY.padEnd(32, "0").slice(0, 32));
+  return crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+}
+async function encryptSsn(env, plainSsn) {
+  const key = await importSsnKey(env);
+  if (!key) throw new Error("Falta configurar la variable de entorno PII_ENCRYPTION_KEY en este Worker de Cloudflare.");
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(plainSsn)));
+  const combined = new Uint8Array(iv.length + ciphertext.length);
+  combined.set(iv, 0);
+  combined.set(ciphertext, iv.length);
+  return rawBytesToBase64(combined);
+}
+async function decryptSsn(env, encoded) {
+  const key = await importSsnKey(env);
+  if (!key) throw new Error("Falta configurar la variable de entorno PII_ENCRYPTION_KEY en este Worker de Cloudflare.");
+  const combined = base64ToRawBytes(encoded);
+  const iv = combined.slice(0, 12);
+  const ciphertext = combined.slice(12);
+  const plainBuf = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+  return new TextDecoder().decode(plainBuf);
 }
 
 /* ------------------------------ USPS (opcional) ------------------------------ */
@@ -430,10 +472,13 @@ async function clientCreate(request, env, user) {
   const body = await readJson(request);
   const fullName = (body.full_name || "").trim();
   if (!fullName) return errorJson("El nombre del cliente es requerido.");
+  const ssnFull = (body.ssn_full || "").replace(/\D/g, "");
+  if (ssnFull && ssnFull.length !== 9) return errorJson("El SSN completo debe tener 9 dígitos.");
+  const ssnFullEnc = ssnFull ? await encryptSsn(env, ssnFull) : null;
   const result = await env.DB.prepare(
-    `INSERT INTO clients (full_name, email, phone, address, city, state, zip, id_last4, date_of_birth, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO clients (full_name, email, phone, address, city, state, zip, id_last4, date_of_birth, ssn_full_enc, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
-    .bind(fullName, body.email || null, body.phone || null, body.address || null, body.city || null, body.state || null, body.zip || null, body.id_last4 || null, body.date_of_birth || null, body.status || "activo", body.notes || null)
+    .bind(fullName, body.email || null, body.phone || null, body.address || null, body.city || null, body.state || null, body.zip || null, body.id_last4 || null, body.date_of_birth || null, ssnFullEnc, body.status || "activo", body.notes || null)
     .run();
   const id = result.meta.last_row_id;
   await logActivity(env.DB, { entityType: "client", entityId: id, action: "cliente_creado", detail: fullName, userId: user.uid });
@@ -488,10 +533,18 @@ async function clientUpdate(request, env, user, id) {
   const body = await readJson(request);
   const fullName = (body.full_name || "").trim();
   if (!fullName) return errorJson("El nombre del cliente es requerido.");
+  // El SSN completo solo se toca si mandaron uno nuevo (el campo llega vacío/oculto cuando ya
+  // hay uno guardado, para no forzar a retipearlo cada vez que se edita el cliente).
+  const ssnFullRaw = (body.ssn_full || "").replace(/\D/g, "");
+  let ssnFullEnc = existing.ssn_full_enc;
+  if (ssnFullRaw) {
+    if (ssnFullRaw.length !== 9) return errorJson("El SSN completo debe tener 9 dígitos.");
+    ssnFullEnc = await encryptSsn(env, ssnFullRaw);
+  }
   await env.DB.prepare(
-    `UPDATE clients SET full_name=?, email=?, phone=?, address=?, city=?, state=?, zip=?, id_last4=?, date_of_birth=?, status=?, notes=?, updated_at=datetime('now') WHERE id = ?`
+    `UPDATE clients SET full_name=?, email=?, phone=?, address=?, city=?, state=?, zip=?, id_last4=?, date_of_birth=?, ssn_full_enc=?, status=?, notes=?, updated_at=datetime('now') WHERE id = ?`
   )
-    .bind(fullName, body.email || null, body.phone || null, body.address || null, body.city || null, body.state || null, body.zip || null, body.id_last4 || null, body.date_of_birth || null, body.status || "activo", body.notes || null, id)
+    .bind(fullName, body.email || null, body.phone || null, body.address || null, body.city || null, body.state || null, body.zip || null, body.id_last4 || null, body.date_of_birth || null, ssnFullEnc, body.status || "activo", body.notes || null, id)
     .run();
   await logActivity(env.DB, { entityType: "client", entityId: id, action: "cliente_actualizado", userId: user.uid });
   const client = await env.DB.prepare(`SELECT * FROM clients WHERE id = ?`).bind(id).first();
@@ -504,6 +557,58 @@ async function clientDelete(env, user, id) {
   await env.DB.prepare(`DELETE FROM clients WHERE id = ?`).bind(id).run();
   await logActivity(env.DB, { entityType: "client", entityId: id, action: "cliente_eliminado", detail: existing.full_name, userId: user.uid });
   return json({ ok: true });
+}
+
+// Descifra el SSN completo del cliente bajo demanda (para copiarlo a un portal de freeze externo
+// o a una carta impresa) — nunca se manda en las respuestas normales de /clients. Cada consulta
+// queda registrada en la bitácora para poder auditar quién lo vio y cuándo.
+async function clientSsnReveal(env, user, id) {
+  const client = await env.DB.prepare(`SELECT id, full_name, ssn_full_enc FROM clients WHERE id = ?`).bind(id).first();
+  if (!client) return errorJson("Cliente no encontrado.", 404);
+  if (!client.ssn_full_enc) return errorJson("Este cliente todavía no tiene un SSN completo guardado.", 404);
+  let ssn;
+  try {
+    ssn = await decryptSsn(env, client.ssn_full_enc);
+  } catch (e) {
+    return errorJson(`No se pudo descifrar el SSN: ${e.message}`, 500);
+  }
+  await logActivity(env.DB, { entityType: "client", entityId: id, action: "ssn_revelado", detail: `Visto por ${user.full_name || user.username}`, userId: user.uid });
+  return json({ ssn_full: ssn });
+}
+
+/* ================================ CONGELAMIENTO DE IDENTIDAD (FREEZE) ================================
+   Bitácora, por cliente, del estado del "security freeze" en las agencias secundarias de
+   verificación de identidad/reporte alterno (LexisNexis, Innovis, ChexSystems, NCTUE, Teletrack/
+   CoreLogic, TeleCheck, Early Warning Services) — el catálogo de agencias y sus links/teléfonos
+   vive en el frontend (clients.js), aquí solo se guarda el estado por agencia. */
+async function clientFreezesList(env, id) {
+  const { results } = await env.DB.prepare(`SELECT * FROM client_freezes WHERE client_id = ? ORDER BY agency`).bind(id).all();
+  return json({ freezes: results || [] });
+}
+
+async function clientFreezeUpdate(request, env, user, id, agency) {
+  const client = await env.DB.prepare(`SELECT id FROM clients WHERE id = ?`).bind(id).first();
+  if (!client) return errorJson("Cliente no encontrado.", 404);
+  const body = await readJson(request);
+  const status = body.status || "no_iniciado";
+  const validStatuses = ["no_iniciado", "solicitado", "congelado", "requiere_llamada", "no_disponible"];
+  if (!validStatuses.includes(status)) return errorJson("Estatus de freeze inválido.");
+  await env.DB.prepare(
+    `INSERT INTO client_freezes (client_id, agency, status, requested_at, confirmed_at, confirmation_code, notes, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT (client_id, agency) DO UPDATE SET
+       status = excluded.status,
+       requested_at = excluded.requested_at,
+       confirmed_at = excluded.confirmed_at,
+       confirmation_code = excluded.confirmation_code,
+       notes = excluded.notes,
+       updated_at = datetime('now')`
+  )
+    .bind(id, agency, status, body.requested_at || null, body.confirmed_at || null, body.confirmation_code || null, body.notes || null)
+    .run();
+  await logActivity(env.DB, { entityType: "client", entityId: id, action: "freeze_actualizado", detail: `${agency}: ${status}`, userId: user.uid });
+  const freeze = await env.DB.prepare(`SELECT * FROM client_freezes WHERE client_id = ? AND agency = ?`).bind(id, agency).first();
+  return json({ freeze });
 }
 
 /* ================================ PLANTILLAS ================================ */
@@ -2520,10 +2625,10 @@ async function creditItemCreate(request, env, user) {
   const createdItems = [];
   for (const bureau of bureausToCreate) {
     const result = await env.DB.prepare(
-      `INSERT INTO credit_items (client_id, category, creditor_name, account_number, status_raw, balance, past_due, date_reported, date_opened, bureaus, notes, source_report)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`
+      `INSERT INTO credit_items (client_id, category, creditor_name, creditor_address, account_number, status_raw, balance, past_due, date_reported, date_opened, bureaus, notes, source_report)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`
     )
-      .bind(clientId, category, creditorName, body.account_number || null, body.status_raw || null, body.balance || null, body.past_due || null, body.date_reported || null, body.date_opened || null, bureau || null, body.notes || null)
+      .bind(clientId, category, creditorName, body.creditor_address || null, body.account_number || null, body.status_raw || null, body.balance || null, body.past_due || null, body.date_reported || null, body.date_opened || null, bureau || null, body.notes || null)
       .run();
     createdItems.push(await env.DB.prepare(`SELECT * FROM credit_items WHERE id = ?`).bind(result.meta.last_row_id).first());
   }
@@ -2544,11 +2649,12 @@ async function creditItemUpdate(request, env, user, id) {
   const creditorName = (body.creditor_name || "").trim();
   if (!creditorName) return errorJson("El nombre del acreedor/cobrador es requerido.");
   await env.DB.prepare(
-    `UPDATE credit_items SET category=?, creditor_name=?, account_number=?, status_raw=?, balance=?, past_due=?, date_reported=?, date_opened=?, bureaus=?, notes=?, is_disputed=?, updated_at=datetime('now') WHERE id=?`
+    `UPDATE credit_items SET category=?, creditor_name=?, creditor_address=?, account_number=?, status_raw=?, balance=?, past_due=?, date_reported=?, date_opened=?, bureaus=?, notes=?, is_disputed=?, updated_at=datetime('now') WHERE id=?`
   )
     .bind(
       body.category || existing.category,
       creditorName,
+      body.creditor_address || null,
       body.account_number || null,
       body.status_raw || null,
       body.balance || null,
@@ -3545,6 +3651,11 @@ async function routeApi(request, env, path, user) {
     if (segs.length === 4 && segs[3] === "addresses" && method === "POST") return clientAddressCreate(request, env, user, segs[2]);
     if (segs.length === 5 && segs[3] === "addresses" && method === "PUT") return clientAddressUpdate(request, env, user, segs[2], segs[4]);
     if (segs.length === 5 && segs[3] === "addresses" && method === "DELETE") return clientAddressDelete(env, user, segs[2], segs[4]);
+
+    if (segs.length === 5 && segs[3] === "ssn" && segs[4] === "reveal" && method === "POST") return clientSsnReveal(env, user, segs[2]);
+
+    if (segs.length === 4 && segs[3] === "freezes" && method === "GET") return clientFreezesList(env, segs[2]);
+    if (segs.length === 5 && segs[3] === "freezes" && method === "PUT") return clientFreezeUpdate(request, env, user, segs[2], segs[4]);
   }
 
   if (segs[1] === "credit-items") {
