@@ -568,7 +568,7 @@ const TPL_CLIENT_HEADER = `{{cliente_nombre}}
 
 Social Security Number (last 4 digits): XXX-XX-{{cliente_id_last4}}
 
-Date of birth: [FECHA DE NACIMIENTO]
+Date of birth: {{cliente_fecha_nacimiento}}
 
 
 {{fecha}}
