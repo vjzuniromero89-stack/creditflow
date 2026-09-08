@@ -669,9 +669,14 @@ export async function renderClientDetail(container, id) {
       </div>
     </div>
 
-    <div class="section-head" style="margin-top:24px">
+    <div class="section-head" style="margin-top:24px;flex-wrap:wrap;gap:10px">
       <h2>Credit score</h2>
+      <div class="flex gap-12">
+        <a class="btn btn-ghost" href="https://www.annualcreditreport.com/" target="_blank" rel="noopener">${icon("link")} Sacar reporte gratis en AnnualCreditReport.com</a>
+        <button class="btn btn-primary" id="import-report-btn-score">${icon("upload")} Importar reporte de crédito</button>
+      </div>
     </div>
+    <p class="text-sm text-muted" style="margin-top:-8px;margin-bottom:12px">AnnualCreditReport.com es la fuente oficial y gratis (una vez por semana, por buró) — el cliente lo pide con su propia identidad, te comparte el PDF, y aquí lo importas: se llena solo el score de arriba y también los ítems negativos de "Colecciones" más abajo.</p>
     <div id="client-credit-score"></div>
 
     <div class="section-head" style="margin-top:24px">
@@ -783,14 +788,19 @@ export async function renderClientDetail(container, id) {
   });
 
   const importInput = document.getElementById("import-report-input");
-  const importBtn = document.getElementById("import-report-btn");
-  importBtn.addEventListener("click", () => importInput.click());
+  // Dos botones disparan el mismo input de archivo — uno junto a "Credit score" (para el flujo con
+  // AnnualCreditReport.com) y el que ya existía junto a "Colecciones" — así no importa desde cuál
+  // de las dos secciones lo suban, siempre corre la misma lógica de importación.
+  const importBtns = [document.getElementById("import-report-btn"), document.getElementById("import-report-btn-score")].filter(Boolean);
+  importBtns.forEach((btn) => btn.addEventListener("click", () => importInput.click()));
+  const importBtnOriginalLabels = importBtns.map((btn) => btn.innerHTML);
   importInput.addEventListener("change", async () => {
     const file = importInput.files[0];
     if (!file) return;
-    const originalLabel = importBtn.innerHTML;
-    importBtn.disabled = true;
-    importBtn.innerHTML = `${icon("spark")} Leyendo reporte…`;
+    importBtns.forEach((btn) => {
+      btn.disabled = true;
+      btn.innerHTML = `${icon("spark")} Leyendo reporte…`;
+    });
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -819,8 +829,10 @@ export async function renderClientDetail(container, id) {
     } catch (err) {
       toast(err.message, "error");
     } finally {
-      importBtn.disabled = false;
-      importBtn.innerHTML = originalLabel;
+      importBtns.forEach((btn, i) => {
+        btn.disabled = false;
+        btn.innerHTML = importBtnOriginalLabels[i];
+      });
       importInput.value = "";
     }
   });
