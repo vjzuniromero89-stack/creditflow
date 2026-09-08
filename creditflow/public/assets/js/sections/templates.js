@@ -124,30 +124,51 @@ export async function renderTemplates(container) {
     <p class="text-sm text-muted" style="margin-top:-8px;margin-bottom:16px">
       Puedes importar tus propias cartas en <strong>.docx</strong> (recomendado, más confiable) o <strong>.pdf</strong> (funciona bien si el PDF tiene texto real, no una imagen escaneada). El texto se guarda automáticamente como una plantilla lista para usar — solo revisa el resultado y ajusta los espacios si hace falta.
     </p>
-    <div class="grid grid-2" id="tpl-grid"></div>
+    <div id="tpl-folders"></div>
   `;
 
-  async function load() {
-    const { templates } = await api.get("/templates");
-    const grid = document.getElementById("tpl-grid");
-    if (!templates.length) {
-      grid.innerHTML = `
-        <div class="card empty" style="grid-column:1/-1">
-          <div class="mark">📄</div>
-          <h3>Aún no tienes plantillas</h3>
-          <p>Carga tus 12 plantillas para empezar, o crea las tuyas propias.</p>
-        </div>
-      `;
-      return;
-    }
-    grid.innerHTML = templates
-      .map(
-        (t) => `
+  // Orden de la estrategia de disputa: primero limpiar información personal, luego
+  // rondas 1→2→3, inquiries, acreedor original y por último cobradores. Cualquier
+  // categoría que no calce con estos patrones (p. ej. "Importado", "General") queda
+  // al final, en orden alfabético entre ellas.
+  const CATEGORY_ORDER = [
+    { rank: 0, test: /informaci[oó]n personal|limpieza/i },
+    { rank: 1, test: /ronda\s*1/i },
+    { rank: 2, test: /ronda\s*2/i },
+    { rank: 3, test: /ronda\s*3/i },
+    { rank: 4, test: /inquir/i },
+    { rank: 5, test: /disputa directa/i },
+    { rank: 6, test: /negociaci[oó]n|pay for delete/i },
+    { rank: 7, test: /aviso final/i },
+    { rank: 8, test: /cobrador/i },
+  ];
+  function categoryRank(cat) {
+    const found = CATEGORY_ORDER.find((c) => c.test.test(cat || ""));
+    return found ? found.rank : 99;
+  }
+
+  function groupByCategory(templates) {
+    const groups = new Map();
+    templates.forEach((t) => {
+      const cat = t.category || "General";
+      if (!groups.has(cat)) groups.set(cat, []);
+      groups.get(cat).push(t);
+    });
+    return [...groups.entries()].sort((a, b) => {
+      const ra = categoryRank(a[0]);
+      const rb = categoryRank(b[0]);
+      if (ra !== rb) return ra - rb;
+      return a[0].localeCompare(b[0]);
+    });
+  }
+
+  function templateCardHtml(t) {
+    return `
       <div class="card card-hover" data-id="${t.id}" style="cursor:pointer">
         <div class="flex-between">
           <div>
             <div class="row-name">${escapeHtml(t.name)}</div>
-            <div class="row-sub">${escapeHtml(t.category) || "General"} ${t.recipient_hint ? "· " + escapeHtml(t.recipient_hint) : ""}</div>
+            <div class="row-sub">${t.recipient_hint ? escapeHtml(t.recipient_hint) : ""}</div>
           </div>
           <div class="cell-actions">
             <button class="btn btn-ghost btn-sm btn-icon" data-edit="${t.id}">${icon("edit")}</button>
@@ -161,18 +182,45 @@ export async function renderTemplates(container) {
             : ""
         }
         <div class="text-sm text-muted" style="margin-top:8px">Actualizada ${formatDate(t.updated_at)}</div>
-      </div>`
+      </div>`;
+  }
+
+  async function load() {
+    const { templates } = await api.get("/templates");
+    const folders = document.getElementById("tpl-folders");
+    if (!templates.length) {
+      folders.innerHTML = `
+        <div class="card empty">
+          <div class="mark">📄</div>
+          <h3>Aún no tienes plantillas</h3>
+          <p>Carga tus 12 plantillas para empezar, o crea las tuyas propias.</p>
+        </div>
+      `;
+      return;
+    }
+    const grouped = groupByCategory(templates);
+    folders.innerHTML = grouped
+      .map(
+        ([cat, items], i) => `
+      <details class="tpl-folder" style="margin-bottom:14px" ${i === 0 ? "open" : ""}>
+        <summary style="cursor:pointer;font-size:15px;font-weight:600;padding:10px 0;display:flex;align-items:center;gap:8px">
+          📁 ${escapeHtml(cat)} <span class="text-sm text-muted" style="font-weight:400">(${items.length})</span>
+        </summary>
+        <div class="grid grid-2" style="margin-top:6px">
+          ${items.map(templateCardHtml).join("")}
+        </div>
+      </details>`
       )
       .join("");
 
-    grid.querySelectorAll("[data-edit]").forEach((b) =>
+    folders.querySelectorAll("[data-edit]").forEach((b) =>
       b.addEventListener("click", async (e) => {
         e.stopPropagation();
         const { template } = await api.get(`/templates/${b.dataset.edit}`);
         openTemplateModal(template, load);
       })
     );
-    grid.querySelectorAll("[data-del]").forEach((b) =>
+    folders.querySelectorAll("[data-del]").forEach((b) =>
       b.addEventListener("click", async (e) => {
         e.stopPropagation();
         const ok = await confirmDialog("¿Eliminar esta plantilla? Las cartas ya creadas con ella no se verán afectadas.");
@@ -186,7 +234,7 @@ export async function renderTemplates(container) {
         }
       })
     );
-    grid.querySelectorAll(".card[data-id]").forEach((card) =>
+    folders.querySelectorAll(".card[data-id]").forEach((card) =>
       card.addEventListener("click", async () => {
         const { template } = await api.get(`/templates/${card.dataset.id}`);
         openTemplateModal(template, load);
