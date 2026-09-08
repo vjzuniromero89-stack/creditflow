@@ -541,7 +541,13 @@ async function clientPortalBackfill(env, user) {
 async function clientPortalResetPassword(env, user, id) {
   const client = await env.DB.prepare(`SELECT id, full_name, portal_username FROM clients WHERE id = ?`).bind(id).first();
   if (!client) return errorJson("Cliente no encontrado.", 404);
-  const { username, password } = await assignPortalCredentials(env, id, client.full_name, client.portal_username);
+  // Los usuarios del formato viejo (nombre.completo.con.puntos) se regeneran también al primer
+  // "Regenerar contraseña" que se les haga después de este cambio, para que queden en el formato
+  // corto nuevo (3 letras + 3 letras + año) sin tener que hacer nada especial — un usuario ya en
+  // formato nuevo (sin puntos) se queda igual, así una contraseña olvidada no le cambia el usuario
+  // cada vez que se resetea.
+  const keepUsername = client.portal_username && !client.portal_username.includes(".") ? client.portal_username : undefined;
+  const { username, password } = await assignPortalCredentials(env, id, client.full_name, keepUsername);
   await logActivity(env.DB, { entityType: "client", entityId: id, action: "portal_password_regenerada", userId: user.uid });
   return json({ portal_username: username, portal_password_plain: password });
 }
