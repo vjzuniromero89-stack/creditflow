@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { AppState } from "../app.js";
 import { icon } from "../icons.js";
 import { openModal, confirmDialog } from "../modal.js";
 import { toast } from "../toast.js";
@@ -509,7 +510,13 @@ async function renderClientFreezeSection(quickcopyBox, rowsBox, clientId, client
         <div><strong>Fecha de nacimiento:</strong> ${formatDobForLetter(client.date_of_birth) || "—"}</div>
         <div><strong>Dirección:</strong> ${escapeHtml(client.address) || "—"} ${escapeHtml(client.city) || ""} ${escapeHtml(client.state) || ""} ${escapeHtml(client.zip) || ""}</div>
         <div><strong>Teléfono:</strong> ${escapeHtml(client.phone) || "—"}</div>
-        <div><strong>SSN:</strong> ${client.has_ssn_full ? `<span id="freeze-ssn-value">•••-••-••••</span> <button type="button" class="btn btn-ghost btn-sm" id="freeze-ssn-reveal" style="padding:1px 6px">Ver</button>` : "— no guardado —"}</div>
+        <div><strong>SSN:</strong> ${
+          !client.has_ssn_full
+            ? "— no guardado —"
+            : AppState.user.role === "admin"
+            ? `<span id="freeze-ssn-value">•••-••-••••</span> <button type="button" class="btn btn-ghost btn-sm" id="freeze-ssn-reveal" style="padding:1px 6px">Ver</button>`
+            : `•••-••-•••• <span class="text-sm text-muted">(solo el administrador puede verlo)</span>`
+        }</div>
       </div>
       <button type="button" class="btn btn-ghost btn-sm" id="freeze-copy-all" style="margin-top:8px">${icon("copy")} Copiar todo</button>
     </div>
@@ -617,9 +624,11 @@ export async function renderClientDetail(container, id) {
           <div>
             <div class="text-muted text-sm">SSN completo</div>
             ${
-              client.has_ssn_full
+              !client.has_ssn_full
+                ? "—"
+                : AppState.user.role === "admin"
                 ? `<span id="ssn-full-value">•••-••-••••</span> <button type="button" class="btn btn-ghost btn-sm" id="ssn-reveal-btn" style="padding:1px 6px">Ver</button>`
-                : "—"
+                : `<span class="text-muted">•••-••-•••• <span class="text-sm">(solo el administrador puede verlo)</span></span>`
             }
           </div>
           <div><div class="text-muted text-sm">Cliente desde</div>${formatDate(client.created_at)}</div>
@@ -669,7 +678,7 @@ export async function renderClientDetail(container, id) {
 
     <div class="section-head" style="margin-top:24px">
       <div>
-        <h2>Colecciones de este cliente</h2>
+        <h2>Colecciones</h2>
         <p class="text-sm text-muted" style="margin-top:2px">Ítems negativos detectados en su reporte de crédito (colecciones, charge-offs, pagos tardíos, inquiries).</p>
       </div>
       <div class="flex gap-12">
