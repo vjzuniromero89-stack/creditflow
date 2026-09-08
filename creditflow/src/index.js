@@ -108,9 +108,9 @@ async function verifyPassword(password, hash, saltHex) {
   for (let i = 0; i < computed.length; i++) diff |= computed.charCodeAt(i) ^ hash.charCodeAt(i);
   return diff === 0;
 }
-// Genera una contraseña aleatoria legible (sin caracteres ambiguos como 0/O, 1/l/I) para el
-// acceso del cliente a su portal — se muestra en texto plano UNA sola vez al crearse o al
-// regenerarse, nunca se vuelve a poder leer después (solo se guarda su hash).
+// Genera una contraseña aleatoria legible (sin caracteres ambiguos como 0/O, 1/l/I) — ya no se usa
+// para el primer acceso del cliente (ver DEFAULT_PORTAL_PASSWORD abajo), se deja disponible por si
+// se necesita en otro lado.
 function randomPortalPassword(len = 10) {
   const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
   const bytes = crypto.getRandomValues(new Uint8Array(len));
@@ -118,6 +118,11 @@ function randomPortalPassword(len = 10) {
   for (let i = 0; i < len; i++) out += chars[bytes[i] % chars.length];
   return out;
 }
+// Contraseña temporal simple para el primer acceso del cliente a su portal (fácil de escribir a
+// mano o de dictar por teléfono) — al crear el acceso o al "Regenerar contraseña" siempre se usa
+// esta misma, y el cliente queda marcado con portal_must_change_password=1 para que, en cuanto
+// entre, el portal lo obligue a crear su propia contraseña antes de dejarlo ver su caso.
+const DEFAULT_PORTAL_PASSWORD = "test1234";
 // Usuario corto y f\u00e1cil de decir/escribir: primeras 3 letras del primer nombre + primeras 3
 // letras del \u00faltimo apellido + el a\u00f1o actual (ej. "Nelson Cirilo Jorge Fernandez" -> "nelfer2026").
 // Antes era el nombre completo separado por puntos (ej. "nelson.cirilo.jorge.fernandez") \u2014 muy
@@ -149,23 +154,31 @@ async function generateUniquePortalUsername(env, fullName) {
     candidate = `${base}${n}`;
   }
 }
-// Crea (o regenera) el acceso al portal de un cliente: usuario único derivado de su nombre y una
-// contraseña aleatoria. Devuelve la contraseña EN TEXTO PLANO — es responsabilidad de quien llama
-// mostrarla una sola vez al usuario (admin) y no guardarla en ningún lado; en la base de datos solo
-// queda el hash.
+// Crea (o regenera) el acceso al portal de un cliente: usuario único derivado de su nombre y la
+// contraseña temporal fija DEFAULT_PORTAL_PASSWORD. Devuelve la contraseña EN TEXTO PLANO para
+// mostrarla en pantalla al admin/agente que la generó. También la guarda cifrada
+// (portal_password_plain_enc, con el mismo cifrado que el SSN) para que se pueda volver a consultar
+// después desde "Usuarios" — y marca portal_must_change_password=1 para que el portal obligue al
+// cliente a poner su propia contraseña la primera vez que entre.
 async function assignPortalCredentials(env, clientId, fullName, keepUsername) {
   const username = keepUsername || (await generateUniquePortalUsername(env, fullName));
-  const password = randomPortalPassword(10);
+  const password = DEFAULT_PORTAL_PASSWORD;
   const { hash, salt } = await hashPassword(password);
-  await env.DB.prepare(`UPDATE clients SET portal_username = ?, portal_password_hash = ?, portal_password_salt = ? WHERE id = ?`).bind(username, hash, salt, clientId).run();
+  const plainEnc = await encryptSsn(env, password);
+  await env.DB
+    .prepare(
+      `UPDATE clients SET portal_username = ?, portal_password_hash = ?, portal_password_salt = ?, portal_password_plain_enc = ?, portal_must_change_password = 1 WHERE id = ?`
+    )
+    .bind(username, hash, salt, plainEnc, clientId)
+    .run();
   return { username, password };
 }
 // Nunca se debe devolver portal_password_hash/portal_password_salt al frontend — se quitan de
 // cualquier fila de cliente antes de mandarla en una respuesta JSON.
 function sanitizeClient(c) {
   if (!c) return c;
-  const { portal_password_hash, portal_password_salt, ssn_full_enc, ...rest } = c;
-  return { ...rest, has_ssn_full: !!ssn_full_enc };
+  const { portal_password_hash, portal_password_salt, portal_password_plain_enc, ssn_full_enc, ...rest } = c;
+  return { ...rest, has_ssn_full: !!ssn_full_enc, has_portal_password: !!portal_password_plain_enc };
 }
 
 async function hmacSign(message, secret) {
@@ -385,7 +398,12 @@ async function portalStatus(request, env) {
   if (env.SESSION_SECRET) {
     const cookies = parseCookies(request);
     const payload = await verifyToken(cookies.portal_session, env.SESSION_SECRET);
-    if (payload && payload.type === "client_portal") client = { id: payload.cid, full_name: payload.full_name };
+    if (payload && payload.type === "client_portal") {
+      // must_change_password se lee de la base de datos (no del token) porque puede cambiar
+      // durante la sesión — en cuanto el cliente crea su propia contraseña, deja de pedírsela.
+      const row = await env.DB.prepare(`SELECT id, full_name, portal_must_change_password FROM clients WHERE id = ?`).bind(payload.cid).first();
+      if (row) client = { id: row.id, full_name: row.full_name, must_change_password: !!row.portal_must_change_password };
+    }
   }
   return json({ authenticated: !!client, client });
 }
@@ -408,7 +426,30 @@ async function portalLogin(request, env) {
   if (!ok) return errorJson("Usuario o contraseña del portal incorrectos.", 401);
   const token = await createToken({ cid: c.id, username: c.portal_username, full_name: c.full_name, type: "client_portal" }, env.SESSION_SECRET, 60 * 60 * 24 * 30);
   await logActivity(env.DB, { entityType: "client", entityId: c.id, action: "portal_inicio_sesion" });
-  return json({ client: { id: c.id, full_name: c.full_name } }, 200, { "Set-Cookie": portalSessionCookieHeader(token) });
+  return json(
+    { client: { id: c.id, full_name: c.full_name }, must_change_password: !!c.portal_must_change_password },
+    200,
+    { "Set-Cookie": portalSessionCookieHeader(token) }
+  );
+}
+
+// El cliente pone su propia contraseña (obligatorio la primera vez que entra con la contraseña
+// temporal test1234; también se puede usar después si quiere cambiarla otra vez). Requiere sesión
+// de portal activa — se llama ya autenticado, ver routePortalApi. Igual que al crear el acceso, la
+// nueva contraseña queda cifrada en portal_password_plain_enc para que tú la puedas consultar
+// después desde "Usuarios" si el cliente te la pide o si necesitas ayudarlo a entrar.
+async function portalChangePassword(request, env, clientId) {
+  const body = await readJson(request);
+  const newPassword = (body.new_password || "").trim();
+  if (newPassword.length < 6) return errorJson("La nueva contraseña debe tener al menos 6 caracteres.");
+  const { hash, salt } = await hashPassword(newPassword);
+  const plainEnc = await encryptSsn(env, newPassword);
+  await env.DB
+    .prepare(`UPDATE clients SET portal_password_hash = ?, portal_password_salt = ?, portal_password_plain_enc = ?, portal_must_change_password = 0 WHERE id = ?`)
+    .bind(hash, salt, plainEnc, clientId)
+    .run();
+  await logActivity(env.DB, { entityType: "client", entityId: clientId, action: "portal_password_cambiada_por_cliente" });
+  return json({ ok: true });
 }
 
 async function portalLogout() {
@@ -446,6 +487,7 @@ async function portalCase(env, clientId) {
 async function routePortalApi(request, env, path, portal) {
   const method = request.method;
   if (path === "/api/portal/case" && method === "GET") return portalCase(env, portal.cid);
+  if (path === "/api/portal/change-password" && method === "POST") return portalChangePassword(request, env, portal.cid);
   return errorJson("Ruta no encontrada.", 404);
 }
 
@@ -540,7 +582,8 @@ async function clientPortalBackfill(env, user) {
 }
 
 // El admin puede resetear la contraseña del portal de un cliente (ej. la olvidó) — el usuario se
-// mantiene igual, solo cambia la contraseña. Se devuelve en texto plano una sola vez.
+// mantiene igual, y la contraseña se regresa a la temporal (test1234); el cliente queda obligado a
+// crear una nueva la próxima vez que entre.
 async function clientPortalResetPassword(env, user, id) {
   const client = await env.DB.prepare(`SELECT id, full_name, portal_username FROM clients WHERE id = ?`).bind(id).first();
   if (!client) return errorJson("Cliente no encontrado.", 404);
@@ -553,6 +596,23 @@ async function clientPortalResetPassword(env, user, id) {
   const { username, password } = await assignPortalCredentials(env, id, client.full_name, keepUsername);
   await logActivity(env.DB, { entityType: "client", entityId: id, action: "portal_password_regenerada", userId: user.uid });
   return json({ portal_username: username, portal_password_plain: password });
+}
+
+// Consulta la contraseña ACTUAL del portal de un cliente — la temporal (test1234) si todavía no ha
+// entrado a cambiarla, o la que él mismo puso si ya la cambió. Se descifra bajo demanda (mismo
+// cifrado que el SSN) y cada consulta queda registrada en la bitácora, igual que con el SSN.
+async function clientPortalPasswordReveal(env, user, id) {
+  const client = await env.DB.prepare(`SELECT id, portal_username, portal_password_plain_enc, portal_must_change_password FROM clients WHERE id = ?`).bind(id).first();
+  if (!client) return errorJson("Cliente no encontrado.", 404);
+  if (!client.portal_password_plain_enc) return errorJson("Este cliente todavía no tiene una contraseña de portal guardada.", 404);
+  let password;
+  try {
+    password = await decryptSsn(env, client.portal_password_plain_enc);
+  } catch {
+    return errorJson("No se pudo descifrar la contraseña — revisa la variable de entorno PII_ENCRYPTION_KEY en Cloudflare.", 500);
+  }
+  await logActivity(env.DB, { entityType: "client", entityId: id, action: "portal_password_vista", userId: user.uid });
+  return json({ portal_username: client.portal_username, portal_password_plain: password, must_change_password: !!client.portal_must_change_password });
 }
 
 async function clientUpdate(request, env, user, id) {
@@ -3727,6 +3787,7 @@ async function routeApi(request, env, path, user) {
     if (segs.length === 3 && segs[2] === "extract-id" && method === "POST") return clientExtractFromId(request, env, user);
     if (segs.length === 4 && segs[2] === "portal" && segs[3] === "backfill" && method === "POST") return clientPortalBackfill(env, user);
     if (segs.length === 5 && segs[3] === "portal" && segs[4] === "reset-password" && method === "POST") return clientPortalResetPassword(env, user, segs[2]);
+    if (segs.length === 5 && segs[3] === "portal" && segs[4] === "password-reveal" && method === "POST") return clientPortalPasswordReveal(env, user, segs[2]);
     if (segs.length === 2 && method === "GET") return clientsList(request, env);
     if (segs.length === 2 && method === "POST") return clientCreate(request, env, user);
     if (segs.length === 3 && method === "GET") return clientGet(env, segs[2]);
