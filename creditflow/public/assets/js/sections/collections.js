@@ -677,8 +677,13 @@ export async function renderClientCreditItems(container, clientId, earningsBox) 
       .join("")}
   `;
 
+  const CATEGORY_ORDER = Object.keys(CATEGORY_META);
   function drawTable(filterCat) {
-    const filtered = filterCat ? credit_items.filter((it) => it.category === filterCat) : credit_items;
+    const filtered = (filterCat ? credit_items.filter((it) => it.category === filterCat) : credit_items.slice()).sort((a, b) => {
+      const catDiff = CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category);
+      if (catDiff !== 0) return catDiff;
+      return (a.creditor_name || "").localeCompare(b.creditor_name || "");
+    });
     if (!filtered.length) {
       tableBox.innerHTML = `<div class="empty text-sm">Sin ítems en esta categoría.</div>`;
       return;
