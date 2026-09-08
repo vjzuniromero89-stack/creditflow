@@ -6,6 +6,7 @@ import { initials } from "./utils.js";
 import { renderLoginOrSetup } from "./sections/auth-screens.js";
 import { renderDashboard } from "./sections/dashboard.js";
 import { renderClientsList, renderClientDetail } from "./sections/clients.js";
+import { renderPortalUsers } from "./sections/users.js";
 import { renderTemplates } from "./sections/templates.js";
 import { renderLettersList, renderLetterDetail, renderNewLetter } from "./sections/letters.js";
 import { renderMailings } from "./sections/mailings.js";
@@ -23,6 +24,7 @@ export const AppState = {
 const NAV = [
   { key: "dashboard", hash: "#/dashboard", label: "Dashboard", icon: "dashboard" },
   { key: "clientes", hash: "#/clientes", label: "Clientes", icon: "users" },
+  { key: "usuarios", hash: "#/usuarios", label: "Usuarios", icon: "link" },
   { key: "ganancias", hash: "#/ganancias", label: "Ganancias", icon: "dollar" },
   { key: "plantillas", hash: "#/plantillas", label: "Plantillas", icon: "file" },
   { key: "cartas", hash: "#/cartas", label: "Cartas", icon: "mail" },
@@ -146,6 +148,11 @@ async function route() {
           setTitle("Clientes", "Administra a tus clientes de reparación de crédito");
           await renderClientsList(content);
         }
+        break;
+      case "usuarios":
+        setActiveNav("usuarios");
+        setTitle("Usuarios", "Accesos al Portal del Cliente — usuario y contraseña de cada cliente");
+        await renderPortalUsers(content);
         break;
       case "ganancias":
         setActiveNav("ganancias");
