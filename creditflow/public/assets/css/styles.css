@@ -296,6 +296,10 @@ input[type="text"], input[type="email"], input[type="password"], input[type="dat
 }
 textarea { resize: vertical; min-height: 90px; font-family: "JetBrains Mono", "SFMono-Regular", Menlo, monospace; line-height: 1.55; }
 input:focus, select:focus, textarea:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(34,211,238,.14); background: rgba(255,255,255,.055); }
+/* Quita las flechitas de subir/bajar en los campos numéricos (ej. Tarifa por cliente) — solo se
+   puede escribir el número a mano, sin esos controles. */
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 select option { background: #12172b; color: var(--text-0); }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 14px; }
 .form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px; }
