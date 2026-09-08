@@ -139,14 +139,19 @@ export async function renderEarningsPanel(container, clientId) {
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Categoría</th><th class="cell-num">Tarifa</th><th class="cell-num">Total ítems</th><th class="cell-num">Pendiente (en reporte)</th><th class="cell-num">Real (borrado)</th><th class="cell-num">Cobrado</th><th class="cell-num">Por cobrar</th></tr></thead>
+          <thead><tr><th>Categoría</th><th class="cell-num">Tarifa <span class="text-sm text-muted">(este cliente)</span></th><th class="cell-num">Total ítems</th><th class="cell-num">Pendiente (en reporte)</th><th class="cell-num">Real (borrado)</th><th class="cell-num">Cobrado</th><th class="cell-num">Por cobrar</th></tr></thead>
           <tbody>
             ${rows
               .map(
                 (c) => `
-              <tr>
+              <tr data-cat-row="${c.category}">
                 <td class="row-name">${escapeHtml(c.label)}</td>
-                <td class="row-sub cell-num">${money(c.fee)}</td>
+                <td class="row-sub cell-num">
+                  <div class="flex gap-6" style="justify-content:flex-end;align-items:center">
+                    <input type="number" step="0.01" min="0" class="tarifa-input" data-cat="${c.category}" value="${Number(c.fee).toFixed(2)}" style="width:76px;text-align:right" title="${c.is_custom ? "Tarifa personalizada para este cliente" : "Tarifa general (Configuración)"}" />
+                    ${c.is_custom ? `<button type="button" class="btn btn-ghost btn-sm" data-reset-tarifa="${c.category}" title="Quitar tarifa personalizada — volver a usar la general" style="padding:0 4px">↺</button>` : ""}
+                  </div>
+                </td>
                 <td class="cell-num"><span class="count-pill">${c.pending_count + c.real_count}</span></td>
                 <td class="row-sub cell-num">${c.pending_count} · ${money(c.pending_amount)}</td>
                 <td class="cell-num"><strong>${c.real_count} · ${money(c.real_amount)}</strong></td>
@@ -169,8 +174,41 @@ export async function renderEarningsPanel(container, clientId) {
           </tfoot>
         </table>
       </div>
+      <p class="text-sm text-muted" style="margin-top:8px;margin-bottom:0">Edita la Tarifa para cambiar cuánto le cobras a ESTE cliente por categoría — no afecta a los demás clientes. El botón ↺ quita la tarifa personalizada y vuelve a usar la tarifa general de Configuración.</p>
     </div>
   `;
+
+  container.querySelectorAll(".tarifa-input").forEach((input) => {
+    input.addEventListener("change", async () => {
+      const cat = input.dataset.cat;
+      const val = input.value === "" ? null : Number(input.value);
+      if (val !== null && (!Number.isFinite(val) || val < 0)) {
+        toast("Monto inválido", "error");
+        renderEarningsPanel(container, clientId);
+        return;
+      }
+      try {
+        await api.put(`/clients/${clientId}/pricing`, { [`fee_${cat}`]: val });
+        toast("Tarifa actualizada para este cliente", "success");
+        renderEarningsPanel(container, clientId);
+      } catch (err) {
+        toast(err.message, "error");
+        renderEarningsPanel(container, clientId);
+      }
+    });
+  });
+  container.querySelectorAll("[data-reset-tarifa]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const cat = btn.dataset.resetTarifa;
+      try {
+        await api.put(`/clients/${clientId}/pricing`, { [`fee_${cat}`]: null });
+        toast("Tarifa personalizada eliminada — usando la general", "success");
+        renderEarningsPanel(container, clientId);
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    });
+  });
 }
 
 const MOTIVO_BY_CATEGORY = {
