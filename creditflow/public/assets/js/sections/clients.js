@@ -68,6 +68,11 @@ function clientFormHtml(c = {}) {
         <div class="field"><label>Últimos 4 del ID/SSN</label><input type="text" name="id_last4" maxlength="4" value="${escapeHtml(c.id_last4)}" /></div>
         <div class="field"><label>Fecha de nacimiento</label><input type="date" name="date_of_birth" value="${c.date_of_birth ? c.date_of_birth.slice(0, 10) : ""}" /></div>
         <div class="field">
+          <label>SSN completo${c.has_ssn_full ? " (ya guardado)" : ""}</label>
+          <input type="text" name="ssn_full" maxlength="11" placeholder="${c.has_ssn_full ? "•••-••-•••• (déjalo vacío para no cambiarlo)" : "Ej. 123-45-6789"}" />
+          <span class="text-sm text-muted">Se guarda cifrado — solo hace falta para tramitar el freeze de identidad en las agencias secundarias.</span>
+        </div>
+        <div class="field">
           <label>Estado del cliente</label>
           <select name="status">
             <option value="activo" ${c.status === "activo" || !c.status ? "selected" : ""}>Activo</option>
@@ -467,6 +472,125 @@ async function renderClientLetters(container, clientId, initialLetters) {
   draw();
 }
 
+/* ------------------------------------------------------------------ */
+/* Congelamiento de identidad (Freeze) — agencias secundarias           */
+/* ------------------------------------------------------------------ */
+const FREEZE_STATUS_LABEL = {
+  no_iniciado: "No iniciado",
+  solicitado: "Solicitado",
+  congelado: "Congelado",
+  requiere_llamada: "Requiere llamada",
+  no_disponible: "No disponible",
+};
+
+// Catálogo de agencias secundarias de verificación de identidad/reporte alterno — las que más se
+// usan en la práctica de reparación de crédito. Todas piden el SSN completo del cliente para
+// procesar el freeze (algunas también exigen crear una cuenta), así que el envío es manual.
+// Nombres/teléfonos/links pueden cambiar — la CFPB publica una lista oficial actualizada cada año.
+const FREEZE_AGENCIES = [
+  { key: "lexisnexis", label: "LexisNexis (incluye SageStream)", url: "https://consumer.risk.lexisnexis.com/freeze", phone: "1-800-456-1244" },
+  { key: "innovis", label: "Innovis", url: "https://www.innovis.com/personal/securityFreeze", phone: "1-800-540-2505" },
+  { key: "chexsystems", label: "ChexSystems", url: "https://www.chexsystems.com/security-freeze/place-freeze", phone: "1-800-428-9623" },
+  { key: "nctue", label: "NCTUE", url: "https://www.nctue.com/consumers", phone: "1-866-349-5355" },
+  { key: "teletrack", label: "CoreLogic / Teletrack", url: "https://consumers.teletrack.com/freeze", phone: "" },
+  { key: "telecheck", label: "TeleCheck", url: "https://getassistance.telecheck.com", phone: "" },
+  { key: "ews", label: "Early Warning Services (EWS)", url: "", phone: "1-800-745-1560" },
+];
+
+async function renderClientFreezeSection(quickcopyBox, rowsBox, clientId, client) {
+  quickcopyBox.innerHTML = `<div class="text-sm text-muted">Cargando…</div>`;
+  rowsBox.innerHTML = "";
+
+  quickcopyBox.innerHTML = `
+    <div class="card" style="padding:12px">
+      <div class="text-sm text-muted" style="margin-bottom:6px">Ficha rápida para copiar en cada sitio de freeze:</div>
+      <div class="text-sm" style="line-height:1.7">
+        <div><strong>Nombre:</strong> ${escapeHtml(client.full_name)}</div>
+        <div><strong>Fecha de nacimiento:</strong> ${formatDobForLetter(client.date_of_birth) || "—"}</div>
+        <div><strong>Dirección:</strong> ${escapeHtml(client.address) || "—"} ${escapeHtml(client.city) || ""} ${escapeHtml(client.state) || ""} ${escapeHtml(client.zip) || ""}</div>
+        <div><strong>Teléfono:</strong> ${escapeHtml(client.phone) || "—"}</div>
+        <div><strong>SSN:</strong> ${client.has_ssn_full ? `<span id="freeze-ssn-value">•••-••-••••</span> <button type="button" class="btn btn-ghost btn-sm" id="freeze-ssn-reveal" style="padding:1px 6px">Ver</button>` : "— no guardado —"}</div>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" id="freeze-copy-all" style="margin-top:8px">${icon("copy")} Copiar todo</button>
+    </div>
+  `;
+
+  let revealedSsn = "";
+  const ssnRevealBtn = quickcopyBox.querySelector("#freeze-ssn-reveal");
+  if (ssnRevealBtn) {
+    ssnRevealBtn.addEventListener("click", async () => {
+      try {
+        const { ssn_full } = await api.post(`/clients/${clientId}/ssn/reveal`, {});
+        revealedSsn = ssn_full;
+        quickcopyBox.querySelector("#freeze-ssn-value").textContent = ssn_full;
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    });
+  }
+  quickcopyBox.querySelector("#freeze-copy-all").addEventListener("click", async () => {
+    const lines = [
+      `Nombre: ${client.full_name || ""}`,
+      `Fecha de nacimiento: ${formatDobForLetter(client.date_of_birth) || ""}`,
+      `Dirección: ${[client.address, client.city, client.state, client.zip].filter(Boolean).join(", ")}`,
+      `Teléfono: ${client.phone || ""}`,
+      `SSN: ${revealedSsn || "(no revelado — dale click a Ver primero)"}`,
+    ];
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      toast("Copiado al portapapeles", "success");
+    } catch {
+      toast("No se pudo copiar — cópialo manualmente", "error");
+    }
+  });
+
+  const { freezes } = await api.get(`/clients/${clientId}/freezes`);
+  const byAgency = Object.fromEntries((freezes || []).map((f) => [f.agency, f]));
+
+  rowsBox.innerHTML = FREEZE_AGENCIES.map((a) => {
+    const f = byAgency[a.key] || {};
+    const status = f.status || "no_iniciado";
+    return `
+      <tr data-agency="${a.key}">
+        <td class="row-name">
+          ${escapeHtml(a.label)}<br/>
+          <span class="text-sm text-muted">
+            ${a.url ? `<a href="${a.url}" target="_blank" rel="noopener">Ir al sitio ↗</a>` : ""}
+            ${a.url && a.phone ? " · " : ""}
+            ${a.phone ? escapeHtml(a.phone) : ""}
+          </span>
+        </td>
+        <td>
+          <select data-field="status" style="font-size:13px">
+            ${Object.entries(FREEZE_STATUS_LABEL).map(([k, label]) => `<option value="${k}" ${status === k ? "selected" : ""}>${label}</option>`).join("")}
+          </select>
+        </td>
+        <td><input type="date" data-field="requested_at" value="${f.requested_at ? String(f.requested_at).slice(0, 10) : ""}" style="font-size:13px" /></td>
+        <td><input type="text" data-field="confirmation_code" value="${escapeHtml(f.confirmation_code)}" placeholder="—" style="font-size:13px;width:110px" /></td>
+        <td><input type="text" data-field="notes" value="${escapeHtml(f.notes)}" placeholder="—" style="font-size:13px" /></td>
+        <td><button type="button" class="btn btn-ghost btn-sm" data-save style="padding:2px 8px">Guardar</button></td>
+      </tr>`;
+  }).join("");
+
+  rowsBox.querySelectorAll("tr[data-agency]").forEach((row) => {
+    row.querySelector("[data-save]").addEventListener("click", async () => {
+      const agency = row.dataset.agency;
+      const payload = {
+        status: row.querySelector('[data-field="status"]').value,
+        requested_at: row.querySelector('[data-field="requested_at"]').value || null,
+        confirmation_code: row.querySelector('[data-field="confirmation_code"]').value || null,
+        notes: row.querySelector('[data-field="notes"]').value || null,
+      };
+      try {
+        await api.put(`/clients/${clientId}/freezes/${agency}`, payload);
+        toast("Freeze actualizado", "success");
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    });
+  });
+}
+
 export async function renderClientDetail(container, id) {
   container.innerHTML = `<div class="card">Cargando...</div>`;
   const { client, letters, activity } = await api.get(`/clients/${id}`);
@@ -490,6 +614,14 @@ export async function renderClientDetail(container, id) {
           <div style="grid-column:1/-1"><div class="text-muted text-sm">Dirección</div>${escapeHtml(client.address) || "—"} ${escapeHtml(client.city) || ""} ${escapeHtml(client.state) || ""} ${escapeHtml(client.zip) || ""}</div>
           <div><div class="text-muted text-sm">ID/SSN (últ. 4)</div>${escapeHtml(client.id_last4) || "—"}</div>
           <div><div class="text-muted text-sm">Fecha de nacimiento</div>${formatDobForLetter(client.date_of_birth) || "—"}</div>
+          <div>
+            <div class="text-muted text-sm">SSN completo</div>
+            ${
+              client.has_ssn_full
+                ? `<span id="ssn-full-value">•••-••-••••</span> <button type="button" class="btn btn-ghost btn-sm" id="ssn-reveal-btn" style="padding:1px 6px">Ver</button>`
+                : "—"
+            }
+          </div>
           <div><div class="text-muted text-sm">Cliente desde</div>${formatDate(client.created_at)}</div>
         </div>
         ${client.notes ? `<div style="margin-top:14px"><div class="text-muted text-sm">Notas</div>${escapeHtml(client.notes)}</div>` : ""}
@@ -508,6 +640,18 @@ export async function renderClientDetail(container, id) {
       <p class="text-sm text-muted" style="margin-bottom:10px">Tu cliente entra en <strong>#/portal</strong> de esta misma app con este usuario para ver cómo va su proceso — nunca ve tarifas ni precios, eso es solo tuyo.</p>
       <div class="text-sm">Usuario: <strong id="portal-username-value">${client.portal_username ? escapeHtml(client.portal_username) : "— todavía no tiene —"}</strong></div>
       <div id="portal-password-reveal" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card" style="margin-top:24px">
+      <h3 style="font-size:15px;margin-bottom:6px">🧊 Congelamiento de identidad (Freeze)</h3>
+      <p class="text-sm text-muted" style="margin-bottom:14px">Congelar el reporte de este cliente en las agencias secundarias les dificulta a los burós y acreedores verificar su identidad — ayuda a que las disputas prosperen. Varias de estas agencias piden el SSN completo y varias exigen crear una cuenta, así que el envío en cada sitio lo hacen tú o Victor a mano; aquí solo llevas el control de cuáles ya están congeladas.</p>
+      <div id="freeze-quickcopy" style="margin-bottom:16px"></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Agencia</th><th>Estatus</th><th>Fecha</th><th>Confirmación / PIN</th><th>Notas</th><th></th></tr></thead>
+          <tbody id="freeze-rows"></tbody>
+        </table>
+      </div>
     </div>
 
     <div class="section-head" style="margin-top:24px">
@@ -574,6 +718,28 @@ export async function renderClientDetail(container, id) {
       btn.disabled = false;
     }
   });
+
+  const ssnRevealBtn = document.getElementById("ssn-reveal-btn");
+  if (ssnRevealBtn) {
+    ssnRevealBtn.addEventListener("click", async () => {
+      ssnRevealBtn.disabled = true;
+      try {
+        const { ssn_full } = await api.post(`/clients/${id}/ssn/reveal`, {});
+        document.getElementById("ssn-full-value").textContent = ssn_full;
+        ssnRevealBtn.textContent = "Ocultar";
+        ssnRevealBtn.disabled = false;
+        ssnRevealBtn.onclick = () => {
+          document.getElementById("ssn-full-value").textContent = "•••-••-••••";
+          renderClientDetail(container, id);
+        };
+      } catch (err) {
+        toast(err.message, "error");
+        ssnRevealBtn.disabled = false;
+      }
+    });
+  }
+
+  renderClientFreezeSection(document.getElementById("freeze-quickcopy"), document.getElementById("freeze-rows"), id, client);
 
   renderClientCreditScore(document.getElementById("client-credit-score"), id);
   renderClientDocuments(document.getElementById("client-documents"), id);
