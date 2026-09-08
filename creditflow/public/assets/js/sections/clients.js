@@ -16,7 +16,7 @@ const US_STATES = "AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD M
 // Muestra el usuario/contraseña del portal UNA sola vez (justo al crearse o al regenerarse) —
 // después ya no se puede volver a leer la contraseña, solo queda su hash. Se usa tanto al crear
 // un cliente nuevo como al regenerar el acceso desde su ficha.
-function showPortalPasswordReveal(box, username, password) {
+export function showPortalPasswordReveal(box, username, password) {
   box.innerHTML = `
     <div class="card" style="border-color:var(--amber);padding:12px">
       <div class="text-sm" style="margin-bottom:8px"><strong>⚠️ Guarda esta contraseña ahora</strong> — por seguridad no se puede volver a mostrar. Compártela con tu cliente para que entre a su portal.</div>
@@ -670,7 +670,7 @@ export async function renderClientDetail(container, id) {
 
     <div class="section-head" style="margin-top:24px">
       <div>
-        <h2>Documentos del cliente</h2>
+        <h2>Documentos</h2>
         <p class="text-sm text-muted" style="margin-top:2px">ID, comprobante de domicilio y Social Security — se incluyen automáticamente en las cartas que los requieran.</p>
       </div>
     </div>
@@ -694,14 +694,14 @@ export async function renderClientDetail(container, id) {
 
     <div class="section-head" style="margin-top:24px">
       <div>
-        <h2>Direcciones del cliente</h2>
+        <h2>Direcciones</h2>
         <p class="text-sm text-muted" style="margin-top:2px">Historial completo de direcciones reportadas — se actualiza solo al importar un reporte de crédito.</p>
       </div>
     </div>
     <div id="client-addresses"></div>
 
     <div class="section-head" style="margin-top:24px">
-      <h2>Cartas de este cliente</h2>
+      <h2>Cartas</h2>
       <button class="btn btn-primary" id="new-letter-btn">${icon("plus")} Nueva carta</button>
     </div>
     <div class="table-wrap"><div id="client-letters"></div></div>
