@@ -3501,7 +3501,11 @@ async function lettersList(request, env) {
   const url = new URL(request.url);
   const status = url.searchParams.get("status");
   const clientId = url.searchParams.get("client_id");
-  let sql = `SELECT l.*, c.full_name as client_name,
+  // Se traen también los datos de contacto del cliente (dirección, ciudad, estado, zip, teléfono)
+  // para poder mostrarlos como remitente sugerido en "Envíos certificados" — muchas cartas de
+  // disputa se envían con los datos del cliente como remitente (no los de la empresa), para que le
+  // lleguen al buró como si las mandara el consumidor directamente.
+  let sql = `SELECT l.*, c.full_name as client_name, c.address as client_address, c.city as client_city, c.state as client_state, c.zip as client_zip, c.phone as client_phone,
     (SELECT tracking_number FROM mailings m WHERE m.letter_id = l.id ORDER BY m.id DESC LIMIT 1) as tracking_number,
     (SELECT last_status FROM mailings m WHERE m.letter_id = l.id ORDER BY m.id DESC LIMIT 1) as mailing_status
     FROM letters l JOIN clients c ON c.id = l.client_id WHERE 1=1`;
@@ -3618,21 +3622,55 @@ async function letterSetStatus(request, env, user, id) {
   return json({ letter });
 }
 
-async function letterSend(request, env, user, id) {
-  const letter = await env.DB.prepare(`SELECT * FROM letters WHERE id = ?`).bind(id).first();
-  if (!letter) return errorJson("Carta no encontrada.", 404);
-  const body = await readJson(request);
-  const trackingNumber = (body.tracking_number || "").trim();
-  if (!trackingNumber) return errorJson("Ingresa el número de rastreo generado en certifiedmaillabels.com.");
+// Lógica compartida para registrar UN envío certificado (usada tanto por "Enviar" en una carta
+// individual como por el envío en lote de "Envíos certificados" — ver lettersSendBatch). Lanza un
+// Error con el mensaje ya listo para mostrar si algo no está bien, en vez de devolver una Response,
+// para que el lote pueda capturar el error de una carta sin tumbar las demás.
+async function registerMailing(env, user, letterId, { tracking_number, cost, carrier }) {
+  const letter = await env.DB.prepare(`SELECT * FROM letters WHERE id = ?`).bind(letterId).first();
+  if (!letter) throw new Error("Carta no encontrada.");
+  const trackingNumber = (tracking_number || "").trim();
+  if (!trackingNumber) throw new Error("Ingresa el número de rastreo generado en certifiedmaillabels.com.");
   const result = await env.DB.prepare(
     `INSERT INTO mailings (letter_id, tracking_number, carrier, cost, mailed_at, last_status, last_checked_at) VALUES (?, ?, ?, ?, datetime('now'), 'Enviada', datetime('now'))`
   )
-    .bind(id, trackingNumber, body.carrier || "USPS Certified Mail", body.cost || null)
+    .bind(letterId, trackingNumber, carrier || "USPS Certified Mail", cost || null)
     .run();
-  await env.DB.prepare(`UPDATE letters SET status = 'enviada', updated_at = datetime('now') WHERE id = ?`).bind(id).run();
-  await logActivity(env.DB, { entityType: "letter", entityId: id, action: "carta_enviada", detail: `Certificado USPS — tracking ${trackingNumber}`, userId: user.uid });
-  const mailing = await env.DB.prepare(`SELECT * FROM mailings WHERE id = ?`).bind(result.meta.last_row_id).first();
+  await env.DB.prepare(`UPDATE letters SET status = 'enviada', updated_at = datetime('now') WHERE id = ?`).bind(letterId).run();
+  await logActivity(env.DB, { entityType: "letter", entityId: letterId, action: "carta_enviada", detail: `Certificado USPS — tracking ${trackingNumber}`, userId: user.uid });
+  return env.DB.prepare(`SELECT * FROM mailings WHERE id = ?`).bind(result.meta.last_row_id).first();
+}
+
+async function letterSend(request, env, user, id) {
+  const body = await readJson(request);
+  let mailing;
+  try {
+    mailing = await registerMailing(env, user, id, body);
+  } catch (e) {
+    return errorJson(e.message, e.message === "Carta no encontrada." ? 404 : 400);
+  }
   return json({ mailing });
+}
+
+// Envío en lote: registra varias cartas certificadas de un jalón — pensado para cuando ya se
+// generaron varias etiquetas juntas para el mismo buró (Equifax/TransUnion/Experian) en
+// certifiedmaillabels.com y ahora solo hay que pegar cada número de rastreo. Si una carta falla
+// (ej. tracking vacío) las demás se registran igual — se regresa el detalle de cada una para que el
+// frontend marque cuál sí quedó y cuál no.
+async function lettersSendBatch(request, env, user) {
+  const body = await readJson(request);
+  const items = Array.isArray(body.items) ? body.items : [];
+  if (!items.length) return errorJson("No se mandó ninguna carta para registrar.");
+  const results = [];
+  for (const item of items) {
+    try {
+      const mailing = await registerMailing(env, user, item.letter_id, item);
+      results.push({ letter_id: item.letter_id, ok: true, mailing });
+    } catch (e) {
+      results.push({ letter_id: item.letter_id, ok: false, error: e.message });
+    }
+  }
+  return json({ results });
 }
 
 /* ================================ ENVÍOS (MAILINGS) ================================ */
@@ -3850,6 +3888,7 @@ async function routeApi(request, env, path, user) {
   if (segs[1] === "letters") {
     if (segs.length === 2 && method === "GET") return lettersList(request, env);
     if (segs.length === 2 && method === "POST") return letterCreate(request, env, user);
+    if (segs.length === 3 && segs[2] === "send-batch" && method === "POST") return lettersSendBatch(request, env, user);
     if (segs.length === 3 && method === "GET") return letterGet(env, segs[2]);
     if (segs.length === 3 && method === "PUT") return letterUpdate(request, env, user, segs[2]);
     if (segs.length === 3 && method === "DELETE") return letterDelete(env, user, segs[2]);
