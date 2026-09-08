@@ -4,7 +4,14 @@
    proyecto (cuando corría como Cloudflare Pages Functions en modo
    "Advanced Mode"): se mantiene como un solo archivo al migrarlo a
    Wrangler para no reescribir ni dividir código que ya funciona.
+
+   Base de datos: usa Supabase (Postgres) en vez de D1. `env.DB` se
+   arma en el fetch() de más abajo con el shim de db-shim.js, que
+   implementa la misma API de D1 (`prepare().bind().first()/.all()/.run()`)
+   por encima de Supabase, así que el resto de este archivo no cambió.
    ===================================================================== */
+
+import { createD1Shim } from "./db-shim.js";
 
 /* ---------------------------- Utilidades HTTP ---------------------------- */
 
@@ -3603,9 +3610,10 @@ export default {
       return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS", "Access-Control-Allow-Headers": "Content-Type" } });
     }
 
-    if (!env.DB) {
-      return errorJson("La base de datos D1 no está conectada a este proyecto (falta el binding 'DB'). Revisa INSTRUCCIONES.md.", 500);
+    if (!env.SUPABASE_URL || !env.SUPABASE_SECRET_KEY) {
+      return errorJson("Falta configurar SUPABASE_URL y/o SUPABASE_SECRET_KEY en este Worker de Cloudflare (Runtime variables and secrets).", 500);
     }
+    env = { ...env, DB: createD1Shim(env) };
 
     // El portal del cliente vive en su propio espacio: usa su propia cookie/sesión, nunca la de
     // tu equipo (ver handlePortalRequest), así que se atiende aparte de PUBLIC_PATHS/routeApi.
