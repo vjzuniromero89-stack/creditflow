@@ -22,39 +22,6 @@ const SCORE_PLATFORMS = {
   "Informe del cliente / otro": "",
 };
 
-function buildScoreChartSvg(scoresByBureau) {
-  const allPoints = Object.values(scoresByBureau).flat();
-  if (!allPoints.length) return "";
-
-  const minScore = Math.min(300, ...allPoints.map((p) => p.score)) - 10;
-  const maxScore = Math.max(850, ...allPoints.map((p) => p.score)) + 10;
-  const dates = [...new Set(allPoints.map((p) => p.recorded_on))].sort();
-  const W = 640,
-    H = 190,
-    PAD = 26;
-  const xFor = (date) => PAD + (dates.length > 1 ? dates.indexOf(date) / (dates.length - 1) : 0.5) * (W - PAD * 2);
-  const yFor = (score) => H - PAD - ((score - minScore) / (maxScore - minScore)) * (H - PAD * 2);
-
-  let svg = `<svg viewBox="0 0 ${W} ${H}" class="score-chart" preserveAspectRatio="none" role="img" aria-label="Historial de credit score">`;
-  [300, 500, 700, 850].forEach((s) => {
-    if (s < minScore || s > maxScore) return;
-    const y = yFor(s).toFixed(1);
-    svg += `<line x1="${PAD}" y1="${y}" x2="${W - PAD}" y2="${y}" stroke="rgba(255,255,255,.08)" /><text x="2" y="${Number(y) + 3}" font-size="9" fill="rgba(255,255,255,.4)">${s}</text>`;
-  });
-  Object.entries(scoresByBureau).forEach(([bureau, points]) => {
-    if (!points.length) return;
-    const sorted = [...points].sort((a, b) => a.recorded_on.localeCompare(b.recorded_on));
-    const path = sorted.map((p, i) => `${i === 0 ? "M" : "L"}${xFor(p.recorded_on).toFixed(1)},${yFor(p.score).toFixed(1)}`).join(" ");
-    const color = BUREAU_COLORS[bureau] || "#94a3b8";
-    svg += `<path d="${path}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />`;
-    sorted.forEach((p) => {
-      svg += `<circle cx="${xFor(p.recorded_on).toFixed(1)}" cy="${yFor(p.score).toFixed(1)}" r="3.5" fill="${color}"><title>${escapeHtml(bureau)}: ${p.score} (${p.recorded_on})</title></circle>`;
-    });
-  });
-  svg += `</svg>`;
-  return svg;
-}
-
 /* ------------------------------------------------------------------ */
 /* Sección "Credit Score" — historial y tendencia por buró (manual)    */
 /* ------------------------------------------------------------------ */
@@ -94,15 +61,8 @@ export async function renderClientCreditScore(container, clientId) {
       `;
     }).join("");
 
-    const chart = buildScoreChartSvg(byBureau);
-
     container.innerHTML = `
       <div class="grid" style="grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">${summaryCards}</div>
-      ${
-        chart
-          ? `<div class="card" style="margin-bottom:16px;overflow-x:auto">${chart}</div>`
-          : `<div class="empty" style="margin-bottom:16px"><div class="mark">📈</div><h3>Sin historial todavía</h3><p>Agrega la primera lectura del score de este cliente abajo.</p></div>`
-      }
       <div class="card">
         <h4 style="font-size:14px;margin-bottom:10px">Agregar lectura</h4>
         <form id="score-form" class="form-grid">
