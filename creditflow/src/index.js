@@ -402,23 +402,32 @@ async function portalLogout() {
   return json({ ok: true }, 200, { "Set-Cookie": clearPortalSessionCookieHeader() });
 }
 
-// Vista de "cómo va mi proceso" para el cliente: sus ítems de crédito agrupados por categoría
-// (sin ningún precio/tarifa — esa información es solo del negocio) y su historial de direcciones.
-// Por cada ítem se muestra si sigue reportando o ya se borró, y cuántas cartas se le han enviado,
-// para que el cliente vea el progreso sin ver nada financiero interno.
+// Vista de "cómo va mi proceso" para el cliente: sus ítems de crédito agrupados por categoría y su
+// historial de direcciones. Por cada ítem se muestra si sigue reportando o ya se borró, cuántas
+// cartas se le han enviado, la tarifa de esa categoría (con la tarifa personalizada del cliente si
+// tiene una) y, en un total aparte, cuánto le toca pagar ahora mismo (lo ya removido y todavía sin
+// marcar como pagado) — para que el cliente vea el progreso Y lo que debe, sin ver el desglose
+// interno de cuánto ya se cobró en total (eso sigue siendo solo del negocio, ver Ganancias).
 async function portalCase(env, clientId) {
   const client = await env.DB.prepare(`SELECT id, full_name, status, created_at FROM clients WHERE id = ?`).bind(clientId).first();
   if (!client) return errorJson("Cliente no encontrado.", 404);
+  const pricing = await getPricingSettings(env);
+  const overrides = await getClientPricingOverrides(env, clientId);
   const { results: itemsRaw } = await env.DB.prepare(
-    `SELECT ci.id, ci.category, ci.creditor_name, ci.account_number, ci.balance, ci.bureaus, ci.removed_status, ci.is_disputed,
+    `SELECT ci.id, ci.category, ci.creditor_name, ci.account_number, ci.balance, ci.bureaus, ci.removed_status, ci.billing_status, ci.is_disputed,
        (SELECT COUNT(*) FROM letters l WHERE l.credit_item_id = ci.id) as letters_count
      FROM credit_items ci WHERE ci.client_id = ? ORDER BY ci.created_at DESC`
   ).bind(clientId).all();
-  const items = (itemsRaw || []).map((it) => ({ ...it, bureau_count: bureauCountForItem(it.bureaus), category_label: PRICING_CATEGORY_LABEL[it.category] || it.category }));
+  const items = (itemsRaw || []).map((it) => {
+    const bureau_count = bureauCountForItem(it.bureaus);
+    const fee = feeForCategory(it.category, pricing, overrides);
+    return { ...it, bureau_count, category_label: PRICING_CATEGORY_LABEL[it.category] || it.category, fee, item_total: fee * bureau_count };
+  });
+  const totalDue = items.filter((it) => it.removed_status === "eliminado" && it.billing_status !== "pagado").reduce((sum, it) => sum + it.item_total, 0);
   const { results: addresses } = await env.DB.prepare(
     `SELECT id, address_line, status, bureaus, first_reported, last_reported FROM client_addresses WHERE client_id = ? ORDER BY (status = 'eliminada'), last_reported DESC, id DESC`
   ).bind(clientId).all();
-  return json({ client, items, addresses: addresses || [] });
+  return json({ client, items, total_due: totalDue, addresses: addresses || [] });
 }
 
 async function routePortalApi(request, env, path, portal) {
