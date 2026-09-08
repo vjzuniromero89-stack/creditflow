@@ -15,6 +15,15 @@ export function renderTemplate(body, map) {
   return out;
 }
 
+// El cliente guarda date_of_birth como "AAAA-MM-DD"; en la carta se muestra como MM/DD/AAAA
+// (formato de fecha de nacimiento habitual en la correspondencia con los burós en EE.UU.).
+export function formatDobForLetter(dateOfBirth) {
+  const m = String(dateOfBirth || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  const [, yyyy, mm, dd] = m;
+  return `${mm}/${dd}/${yyyy}`;
+}
+
 export function roundLabel(roundNumber) {
   return Number(roundNumber) === 0 ? "Información personal" : `Ronda ${roundNumber}`;
 }
@@ -164,6 +173,7 @@ export async function renderNewLetter(container) {
       cliente_direccion: client.address || "",
       cliente_ciudad_estado_zip: [client.city, client.state, client.zip].filter(Boolean).join(", "),
       cliente_id_last4: client.id_last4 || "",
+      cliente_fecha_nacimiento: formatDobForLetter(client.date_of_birth),
       fecha: todayLong(),
       destinatario_nombre: document.getElementById("f-recipient-name").value,
       destinatario_direccion: document.getElementById("f-recipient-address").value,

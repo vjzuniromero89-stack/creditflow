@@ -9,6 +9,7 @@ export const PLACEHOLDERS = [
   "{{cliente_direccion}}",
   "{{cliente_ciudad_estado_zip}}",
   "{{cliente_id_last4}}",
+  "{{cliente_fecha_nacimiento}}",
   "{{fecha}}",
   "{{destinatario_nombre}}",
   "{{destinatario_direccion}}",

@@ -3,7 +3,7 @@ import { icon } from "../icons.js";
 import { openModal, confirmDialog } from "../modal.js";
 import { toast } from "../toast.js";
 import { escapeHtml, formatDate, todayLong } from "../utils.js";
-import { renderTemplate } from "./letters.js";
+import { renderTemplate, formatDobForLetter } from "./letters.js";
 
 export const CATEGORY_META = {
   coleccion: { label: "Colección" },
@@ -266,6 +266,7 @@ function buildLetterMap(client, item, bureau, roundNumber) {
     cliente_direccion: client.address || "",
     cliente_ciudad_estado_zip: [client.city, client.state, client.zip].filter(Boolean).join(", "),
     cliente_id_last4: client.id_last4 || "",
+    cliente_fecha_nacimiento: formatDobForLetter(client.date_of_birth),
     fecha: todayLong(),
     destinatario_nombre: bureau,
     destinatario_direccion: "",
@@ -484,6 +485,7 @@ export async function openGenerateLetterModal({ item, onSaved }) {
       cliente_direccion: client.address || "",
       cliente_ciudad_estado_zip: [client.city, client.state, client.zip].filter(Boolean).join(", "),
       cliente_id_last4: client.id_last4 || "",
+      cliente_fecha_nacimiento: formatDobForLetter(client.date_of_birth),
       fecha: todayLong(),
       destinatario_nombre: fd.get("recipient_name") || "",
       destinatario_direccion: "",
