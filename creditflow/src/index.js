@@ -563,6 +563,11 @@ async function clientDelete(env, user, id) {
 // o a una carta impresa) — nunca se manda en las respuestas normales de /clients. Cada consulta
 // queda registrada en la bitácora para poder auditar quién lo vio y cuándo.
 async function clientSsnReveal(env, user, id) {
+  // Solo un administrador puede ver el SSN completo — un agente ve nada más los últimos 4 (los
+  // mismos que ya se usan en las cartas de disputa, ver id_last4). Esto es aparte del cifrado:
+  // aunque alguien tuviera la fila de la base de datos, sigue sin poder descifrarla sin
+  // PII_ENCRYPTION_KEY — este chequeo es sobre quién puede pedírselo a la app.
+  if (user.role !== "admin") return errorJson("Solo un administrador puede ver el SSN completo.", 403);
   const client = await env.DB.prepare(`SELECT id, full_name, ssn_full_enc FROM clients WHERE id = ?`).bind(id).first();
   if (!client) return errorJson("Cliente no encontrado.", 404);
   if (!client.ssn_full_enc) return errorJson("Este cliente todavía no tiene un SSN completo guardado.", 404);
