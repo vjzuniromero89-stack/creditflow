@@ -2252,6 +2252,77 @@ function parseInquiriesFromPage(runs) {
   return results;
 }
 
+// Junta corridas de texto posicionadas en líneas (agrupando por "y", ordenando por "x" dentro de
+// cada línea) — mismo criterio de agrupación que usa parseInquiriesFromPage, factorizado aquí para
+// reutilizarlo en el lector de scores y de fecha del reporte.
+function groupRunsIntoLines(runs) {
+  const rowsByY = new Map();
+  for (const r of runs) {
+    const key = Math.round(r.y * 2) / 2;
+    if (!rowsByY.has(key)) rowsByY.set(key, []);
+    rowsByY.get(key).push(r);
+  }
+  return [...rowsByY.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([, rs]) => rs.sort((a, b) => a.x - b.x).map((r) => r.text).join(" ").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+// Lee los 3 scores (Equifax/TransUnion/Experian) del bloque "SCORE MODELS" que trae este formato de
+// reporte — verificado contra un reporte real: cada score sale como "BURO/MODELO - nombre - ssn"
+// seguido de una línea "SCORE: NNN". El bloque suele repetirse en más de una página del mismo PDF
+// (una copia por cada "Score Models"/"Credit Score Information Disclosure" que incluya el reporte),
+// así que se deduplica por buró+score al final.
+const SCORE_BUREAU_NAME = { EQUIFAX: "Equifax", TRANSUNION: "TransUnion", EXPERIAN: "Experian" };
+const SCORE_BUREAU_RE = /^(EQUIFAX|TRANSUNION|EXPERIAN)\b/i;
+function parseCreditScoresFromPages(pages) {
+  const found = [];
+  for (const runs of pages) {
+    const lines = groupRunsIntoLines(runs);
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(SCORE_BUREAU_RE);
+      if (!m) continue;
+      // El "SCORE: NNN" puede venir pegado en la misma línea o en la siguiente, según cómo se
+      // acomode el texto en esa página — se checan las dos formas.
+      const sameLineScore = lines[i].match(/SCORE:\s*(\d{3})\b/i);
+      const nextLineScore = !sameLineScore && lines[i + 1] ? lines[i + 1].match(/^SCORE:\s*(\d{3})\b/i) : null;
+      const scoreMatch = sameLineScore || nextLineScore;
+      if (!scoreMatch) continue;
+      const score = Number(scoreMatch[1]);
+      if (score < 250 || score > 900) continue;
+      found.push({ bureau: SCORE_BUREAU_NAME[m[1].toUpperCase()], score });
+    }
+  }
+  const seen = new Set();
+  const results = [];
+  for (const f of found) {
+    const key = `${f.bureau}|${f.score}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push(f);
+  }
+  return results;
+}
+
+// Fecha en que se generó el reporte ("DATE COMPLETED" en el encabezado que se repite en cada
+// página) — se usa como fecha de la lectura de score al importar. Si no se encuentra, quien llama
+// usa la fecha de hoy.
+function parseReportDateFromPages(pages) {
+  for (const runs of pages) {
+    const lines = groupRunsIntoLines(runs);
+    const idx = lines.findIndex((l) => /DATE COMPLETED/i.test(l));
+    if (idx === -1) continue;
+    for (let j = idx; j < Math.min(idx + 3, lines.length); j++) {
+      const m = lines[j].match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
+      if (m) {
+        const [, mo, da, yr] = m;
+        return `${yr}-${mo.padStart(2, "0")}-${da.padStart(2, "0")}`;
+      }
+    }
+  }
+  return null;
+}
+
 // Busca un run cuyo texto coincida con labelRe y devuelve el texto de los runs a su derecha en el
 // mismo renglón (misma y) — sirve para leer valores tipo "ETIQUETA   valor..." por posición.
 function extractLabeledRowText(runs, labelRe, stopRe) {
@@ -2417,9 +2488,11 @@ function parseCreditReport(pages) {
     const { items, addresses: addressesFromNotes } = parseCreditReportPCB(pages);
     const addresses = dedupAddresses([...addressesFromNotes, ...extractAddressesFromAllRuns(pages)]);
     const personalInfo = parsePersonalInfoFromPages(pages);
-    return { format, items, addresses, personalInfo };
+    const scores = parseCreditScoresFromPages(pages);
+    const reportDate = parseReportDateFromPages(pages);
+    return { format, items, addresses, personalInfo, scores, reportDate };
   }
-  return { format: "unknown", items: [], addresses: [], personalInfo: null };
+  return { format: "unknown", items: [], addresses: [], personalInfo: null, scores: [], reportDate: null };
 }
 
 /* ---------- endpoint: POST /api/clients/:id/credit-report/import (multipart/form-data, campo "file") ---------- */
@@ -2585,6 +2658,29 @@ async function creditReportImport(request, env, user, clientId) {
     }
   }
 
+  // --- score de crédito: si el reporte trae el bloque "SCORE MODELS" (Equifax/TransUnion/Experian)
+  // se guarda como una lectura más en el historial de "Credit Score" del cliente, con la fecha del
+  // reporte (o hoy si no se pudo leer la fecha) — así ese apartado se llena solo en vez de tener
+  // que anotarlo a mano cada vez que se importa un reporte nuevo. Se evita duplicar si ya existe
+  // exactamente la misma lectura (mismo buró + fecha + score) — por ejemplo si se reimporta el
+  // mismo PDF por error.
+  let scoresImported = 0;
+  const recordedOn = parsed.reportDate || new Date().toISOString().slice(0, 10);
+  for (const s of parsed.scores || []) {
+    const existingScore = await env.DB.prepare(
+      `SELECT id FROM credit_scores WHERE client_id = ? AND bureau = ? AND recorded_on = ? AND score = ?`
+    )
+      .bind(clientId, s.bureau, recordedOn, s.score)
+      .first();
+    if (existingScore) continue;
+    await env.DB.prepare(
+      `INSERT INTO credit_scores (client_id, bureau, score, recorded_on, source, notes) VALUES (?, ?, ?, ?, ?, ?)`
+    )
+      .bind(clientId, s.bureau, s.score, recordedOn, "Reporte de crédito importado", fileName)
+      .run();
+    scoresImported++;
+  }
+
   const message =
     inserted === 0 && skippedDuplicates === 0
       ? "Se leyó el reporte pero no se encontraron cuentas negativas (colecciones, charge-offs, pagos tardíos, inquiries) para importar."
@@ -2597,7 +2693,8 @@ async function creditReportImport(request, env, user, clientId) {
     detail:
       `${fileName} — ${inserted} ítem(s) nuevo(s), ${skippedDuplicates} ya existían` +
       (itemsRemoved ? `, ${itemsRemoved} ítem(s) ya no aparecen (marcados eliminados)` : "") +
-      (addressesRemoved ? `, ${addressesRemoved} dirección(es) ya no aparecen (marcadas eliminadas)` : ""),
+      (addressesRemoved ? `, ${addressesRemoved} dirección(es) ya no aparecen (marcadas eliminadas)` : "") +
+      (scoresImported ? `, ${scoresImported} score(s) nuevo(s) registrado(s)` : ""),
     userId: user.uid,
   });
 
@@ -2613,6 +2710,7 @@ async function creditReportImport(request, env, user, clientId) {
     addresses_updated: addressesUpdated,
     addresses_removed: addressesRemoved,
     client_fields_filled: clientFieldsFilled,
+    scores_imported: scoresImported,
   });
 }
 
