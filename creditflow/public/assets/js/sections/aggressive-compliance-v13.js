@@ -1,11 +1,136 @@
 import { api } from "../api.js";
 import { escapeHtml } from "../utils.js";
 import { toast } from "../toast.js";
-function style(){if(document.getElementById("cf132-style"))return;const s=document.createElement("style");s.id="cf132-style";s.textContent=`
-.cf13-shell{display:grid;gap:14px}.cf13-hero{padding:18px;border:1px solid rgba(255,155,55,.28);border-radius:16px;background:linear-gradient(135deg,rgba(255,145,45,.08),rgba(92,86,255,.07));display:flex;justify-content:space-between;gap:16px;align-items:center}.cf13-hero h3{margin:4px 0 6px;font-size:20px}.cf13-hero p{margin:0;color:var(--cf7-muted);font-size:12px;max-width:850px;line-height:1.55}.cf13-hero-actions{display:flex;gap:8px;flex-wrap:wrap}.cf13-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.cf13-kpi,.cf13-card{border:1px solid rgba(120,150,170,.18);background:rgba(8,23,34,.56);border-radius:13px;padding:13px}.cf13-kpi span{font-size:24px;font-weight:800;display:block}.cf13-kpi strong{font-size:12px}.cf13-kpi small{display:block;color:var(--cf7-muted);font-size:10px;margin-top:3px}.cf13-list{display:grid;gap:10px}.cf13-card.actionable{border-color:rgba(78,200,135,.35)}.cf13-card.evidence_required{border-color:rgba(245,190,70,.35)}.cf13-top{display:flex;justify-content:space-between;gap:12px}.cf13-top small{display:block;color:var(--cf7-muted);margin-top:3px}.cf13-chip{font-size:10px;padding:5px 8px;border-radius:999px;border:1px solid rgba(120,150,170,.25);height:max-content}.cf13-body{display:grid;gap:8px;margin-top:10px}.cf13-body p{margin:0;font-size:11px;color:var(--cf7-muted);line-height:1.5}.cf13-label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--cf7-muted)}.cf13-result{padding:10px 12px;border-radius:10px;background:rgba(100,130,160,.07)}.cf13-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:10px;flex-wrap:wrap}.cf13-note{font-size:11px;color:var(--cf7-muted);padding:10px 12px;border-left:3px solid rgba(255,155,55,.45)}.cf132-campaigns{display:grid;gap:8px}.cf132-campaign{padding:11px;border-radius:11px;border:1px solid rgba(78,200,135,.24);background:rgba(78,200,135,.05)}@media(max-width:900px){.cf13-kpis{grid-template-columns:repeat(2,1fr)}}@media(max-width:650px){.cf13-hero{flex-direction:column;align-items:flex-start}.cf13-kpis{grid-template-columns:1fr}}`;document.head.appendChild(s)}
-const label=x=>x==="actionable"?"OPORTUNIDAD ACCIONABLE":x==="evidence_required"?"REQUIERE EVIDENCIA":x==="review"?"REVISIÓN":"PENDIENTE";
-const canPrepare=x=>["COLLECTOR_COMPLIANCE_UNVERIFIED","OWNERSHIP_DOCUMENTATION_REVIEW","COLLECTOR_LICENSE_SIGNAL"].includes(x.finding_code)||x.actionability==="actionable";
-async function load(panel,clientId){panel.innerHTML=`<div class="cf13-card">Cargando Aggressive Compliance Engine…</div>`;try{const [data,cr]=await Promise.all([api.get(`/aggressive-compliance/client/${clientId}`),api.get(`/aggressive-compliance/client/${clientId}/campaigns`).catch(()=>({campaigns:[]}))]);const f=data.findings||[],campaigns=cr.campaigns||[];const actionable=f.filter(x=>x.actionability==="actionable").length,evidence=f.filter(x=>x.actionability==="evidence_required").length,investigated=f.filter(x=>x.investigation_status==="completed").length;
-panel.innerHTML=`<div class="cf13-shell"><section class="cf13-hero"><div><div class="cf7-eyebrow">AGGRESSIVE COMPLIANCE ENGINE · v13.3</div><h3>Challenge Campaign</h3><p>Convierte hallazgos permitidos en campañas documentadas contra CRA, furnisher o collector. Sigue separado de Estrategia, Cartas y PostGrid hasta una aprobación/handoff posterior.</p></div><div class="cf13-hero-actions"><button class="btn btn-ghost" id="cf13-run">${data.run?"Reanalizar señales":"Analizar expediente"}</button>${data.run?`<button class="btn btn-primary" id="cf131-investigate">Investigar automáticamente</button>`:""}</div></section><div class="cf13-note">ACE puede preparar solicitudes al collector aunque falte documentación. Para una disputa factual CRA/furnisher, no inventa un error: exige una base específica. Los plazos se calcularán desde entrega real y contemplarán 30/45 días cuando corresponda.</div><section class="cf13-kpis"><div class="cf13-kpi"><span>${f.length}</span><strong>Hallazgos</strong><small>señales detectadas</small></div><div class="cf13-kpi"><span>${investigated}</span><strong>Investigados</strong><small>analizados</small></div><div class="cf13-kpi"><span>${campaigns.length}</span><strong>Campañas ACE</strong><small>borradores aislados</small></div><div class="cf13-kpi"><span>${evidence}</span><strong>Requieren evidencia</strong><small>el motor buscará rutas permitidas</small></div></section>${campaigns.length?`<section class="cf13-card"><strong>Mailing & Deadline Tracker</strong><div class="cf132-campaigns">${campaigns.map(c=>`<div class="cf132-campaign"><strong>${escapeHtml(c.template_code||"ACE")}</strong> · ${escapeHtml(c.target_type||"")} · ${escapeHtml(c.target_name||c.bureau||"")}<div class="cf13-label">Estado: ${escapeHtml(c.status)} · Deadline: ${escapeHtml(c.deadline_status||"not_started")}</div><p>${escapeHtml(c.factual_basis||"")}</p>${c.delivered_at?`<p><strong>Entregado:</strong> ${escapeHtml(c.delivered_at)} ${c.standard_due_at?`· <strong>30d:</strong> ${escapeHtml(c.standard_due_at)}`:""} ${c.extended_due_at?`· <strong>45d:</strong> ${escapeHtml(c.extended_due_at)}`:""}</p>`:""}<div class="cf13-actions">${c.status==="draft"?`<button class="btn btn-primary btn-sm" data-approve="${c.id}">Aprobar campaña</button>`:""}${["approved","sent"].includes(c.status)?`<button class="btn btn-ghost btn-sm" data-delivered="${c.id}">Registrar entrega</button>`:""}${["delivered","waiting_response"].includes(c.status)?`<button class="btn btn-ghost btn-sm" data-response="${c.id}">Registrar respuesta</button><button class="btn btn-ghost btn-sm" data-deadline="${c.id}">Revisar plazo</button>`:""}</div></div>`).join("")}</div></section>`:""}<div class="cf13-list">${f.map(x=>`<article class="cf13-card ${escapeHtml(x.actionability||"")}"><div class="cf13-top"><div><strong>${escapeHtml(x.title)}</strong><small>${escapeHtml(x.creditor_name||"Expediente")} ${x.account_number?`· ${escapeHtml(x.account_number)}`:""}</small></div><span class="cf13-chip">${escapeHtml(label(x.actionability||"pending"))}</span></div><div class="cf13-body"><div><div class="cf13-label">Señal</div><p>${escapeHtml(x.detail||"")}</p></div>${x.investigation_result?`<div class="cf13-result"><div class="cf13-label">Investigación</div><p>${escapeHtml(x.investigation_result)}</p></div>`:""}${x.evidence_needed?`<div><div class="cf13-label">Información pendiente</div><p>${escapeHtml(x.evidence_needed)}</p></div>`:""}</div><div class="cf13-actions">${canPrepare(x)?`<button class="btn btn-primary btn-sm" data-campaign="${x.id}">Preparar Challenge Campaign</button>`:`<button class="btn btn-ghost btn-sm" disabled>Sin base factual todavía</button>`}</div></article>`).join("")||`<div class="cf13-card">Aún no hay análisis.</div>`}</div></div>`;
-panel.querySelector("#cf13-run")?.addEventListener("click",async e=>{const b=e.currentTarget;b.disabled=true;try{const r=await api.post(`/aggressive-compliance/client/${clientId}/analyze`);toast(`${r.findings_count} hallazgo(s) encontrados`,"success");await load(panel,clientId)}catch(err){toast(err.message||"No se pudo analizar","error");b.disabled=false}});panel.querySelector("#cf131-investigate")?.addEventListener("click",async e=>{const b=e.currentTarget;b.disabled=true;try{const r=await api.post(`/aggressive-compliance/client/${clientId}/investigate`);toast(`${r.actionable} accionable(s), ${r.evidence_required} requieren evidencia`,"success");await load(panel,clientId)}catch(err){toast(err.message||"No se pudo investigar","error");b.disabled=false}});panel.querySelectorAll("[data-campaign]").forEach(b=>b.onclick=async()=>{b.disabled=true;try{const r=await api.post(`/aggressive-compliance/client/${clientId}/findings/${b.dataset.campaign}/prepare-campaign`);toast(r.reused?"La campaña ACE ya estaba preparada":"Challenge Campaign preparada","success");await load(panel,clientId)}catch(err){toast(err.message||"No se pudo preparar la campaña","error");b.disabled=false}});panel.querySelectorAll("[data-approve]").forEach(b=>b.onclick=async()=>{try{await api.post(`/aggressive-compliance/client/${clientId}/campaigns/${b.dataset.approve}/approve`,{});toast("Campaña aprobada","success");await load(panel,clientId)}catch(e){toast(e.message||"No se pudo aprobar","error")}});panel.querySelectorAll("[data-delivered]").forEach(b=>b.onclick=async()=>{const v=prompt("Fecha/hora de entrega (ISO) o deja vacío para ahora:","");try{await api.post(`/aggressive-compliance/client/${clientId}/campaigns/${b.dataset.delivered}/delivered`,v?{delivered_at:v}:{});toast("Entrega registrada y reloj calculado","success");await load(panel,clientId)}catch(e){toast(e.message||"No se pudo registrar entrega","error")}});panel.querySelectorAll("[data-response]").forEach(b=>b.onclick=async()=>{const s=prompt("Resumen de la respuesta:","");if(s===null)return;try{await api.post(`/aggressive-compliance/client/${clientId}/campaigns/${b.dataset.response}/response`,{response_summary:s});toast("Respuesta registrada","success");await load(panel,clientId)}catch(e){toast(e.message||"No se pudo registrar respuesta","error")}});panel.querySelectorAll("[data-deadline]").forEach(b=>b.onclick=async()=>{const ext=confirm("¿Aplica una extensión documentada hasta 45 días? Aceptar=Sí / Cancelar=No");try{const r=await api.post(`/aggressive-compliance/client/${clientId}/campaigns/${b.dataset.deadline}/deadline-review`,{extension_applies:ext});toast(r.potential_failure?"Posible incumplimiento: revisar para escalación":r.rationale,"success");await load(panel,clientId)}catch(e){toast(e.message||"No se pudo revisar plazo","error")}})}catch(e){panel.innerHTML=`<div class="cf13-card"><strong>No se pudo cargar Aggressive Compliance Engine.</strong><p>${escapeHtml(e.message||String(e))}</p></div>`}}
-export async function installAggressiveComplianceTab(container,clientId){style();const nav=container.querySelector(".cf7-client-tabs"),panels=container.querySelector(".cf7-client-panels");if(!nav||!panels||nav.querySelector('[data-tab="aggressive"]'))return;const btn=document.createElement("button");btn.dataset.tab="aggressive";btn.textContent="Aggressive Compliance";nav.appendChild(btn);const panel=document.createElement("section");panel.className="cf7-client-panel";panel.dataset.panel="aggressive";panels.appendChild(panel);btn.addEventListener("click",async()=>{nav.querySelectorAll("button").forEach(x=>x.classList.remove("active"));btn.classList.add("active");panels.querySelectorAll(".cf7-client-panel").forEach(p=>p.classList.toggle("active",p===panel));await load(panel,clientId)})}
+
+function style(){
+  if(document.getElementById("cf134-style"))return;
+  const s=document.createElement("style");s.id="cf134-style";
+  s.textContent=`
+  .cf134-shell{display:grid;gap:14px}
+  .cf134-hero{padding:18px;border:1px solid rgba(255,155,55,.28);border-radius:16px;background:linear-gradient(135deg,rgba(255,145,45,.08),rgba(92,86,255,.07));display:flex;justify-content:space-between;gap:16px;align-items:center}
+  .cf134-hero h3{margin:4px 0 6px;font-size:20px}.cf134-hero p{margin:0;color:var(--cf7-muted);font-size:12px;max-width:880px;line-height:1.55}
+  .cf134-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+  .cf134-kpi,.cf134-card{border:1px solid rgba(120,150,170,.18);background:rgba(8,23,34,.56);border-radius:13px;padding:13px}
+  .cf134-kpi span{display:block;font-size:24px;font-weight:800}.cf134-kpi strong{font-size:11px}.cf134-kpi small{display:block;color:var(--cf7-muted);font-size:10px;margin-top:3px}
+  .cf134-list{display:grid;gap:10px}.cf134-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:start}
+  .cf134-meta{font-size:10px;color:var(--cf7-muted);margin-top:4px}.cf134-desc{font-size:11px;color:var(--cf7-muted);margin-top:8px;line-height:1.5}
+  .cf134-chip{font-size:10px;padding:5px 8px;border:1px solid rgba(120,150,170,.25);border-radius:999px;white-space:nowrap}
+  .cf134-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end;margin-top:10px}
+  .cf134-note{font-size:11px;color:var(--cf7-muted);padding:10px 12px;border-left:3px solid rgba(255,155,55,.45)}
+  @media(max-width:1000px){.cf134-kpis{grid-template-columns:repeat(2,1fr)}}@media(max-width:650px){.cf134-hero{flex-direction:column;align-items:flex-start}.cf134-kpis{grid-template-columns:1fr}.cf134-row{grid-template-columns:1fr}}
+  `;
+  document.head.appendChild(s);
+}
+
+function catLabel(c){
+  const x=String(c||"").toLowerCase();
+  if(x.includes("cole"))return "COLLECTION";
+  if(x.includes("charge"))return "CHARGE-OFF";
+  if(x.includes("tard")||x.includes("late"))return "LATE PAYMENT";
+  if(x.includes("inquir")||x.includes("consulta"))return "INQUIRY";
+  return String(c||"NEGATIVE").toUpperCase();
+}
+
+async function load(panel,clientId){
+  panel.innerHTML=`<div class="cf134-card">Cargando Challenge Campaign…</div>`;
+  try{
+    const d=await api.get(`/aggressive-compliance/client/${clientId}/challenge-dashboard`);
+    const items=d.items||[],campaigns=d.campaigns||[],counts=d.counts||{};
+    const byItem=new Map();
+    campaigns.forEach(c=>{if(c.credit_item_id&&!byItem.has(String(c.credit_item_id)))byItem.set(String(c.credit_item_id),c)});
+
+    panel.innerHTML=`<div class="cf134-shell">
+      <section class="cf134-hero">
+        <div>
+          <div class="cf7-eyebrow">AGGRESSIVE COMPLIANCE ENGINE · v13.4</div>
+          <h3>Universal Challenge Campaign</h3>
+          <p>Collections, charge-offs, late payments e inquiries entran directamente al Challenge Campaign. Aquí no existe una etapa separada de “auditar”, “investigar” o “probar evidencia del cliente”. Cada categoría recibe una ruta y una carta jurídicamente apropiada.</p>
+        </div>
+        <button class="btn btn-primary" id="cf134-build">Construir todos los Challenges</button>
+      </section>
+
+      <div class="cf134-note">No se inventan hechos. Collection usa validation/information challenge; charge-off revisa el reporting; late payment revisa el historial de pagos; inquiry solicita el permissible purpose salvo que el consumidor confirme que fue no autorizado.</div>
+
+      <section class="cf134-kpis">
+        <div class="cf134-kpi"><span>${counts.eligible||0}</span><strong>NEGATIVOS ELEGIBLES</strong><small>entran al campaign</small></div>
+        <div class="cf134-kpi"><span>${counts.collections||0}</span><strong>COLLECTIONS</strong><small>validation challenge</small></div>
+        <div class="cf134-kpi"><span>${counts.chargeoffs||0}</span><strong>CHARGE-OFFS</strong><small>reporting challenge</small></div>
+        <div class="cf134-kpi"><span>${counts.late_payments||0}</span><strong>LATE PAYMENTS</strong><small>payment-history challenge</small></div>
+        <div class="cf134-kpi"><span>${counts.inquiries||0}</span><strong>INQUIRIES</strong><small>permissible-purpose challenge</small></div>
+      </section>
+
+      <section class="cf134-list">
+        ${items.map(i=>{
+          const c=byItem.get(String(i.id));
+          return `<article class="cf134-card">
+            <div class="cf134-row">
+              <div>
+                <strong>${escapeHtml(i.creditor_name||"Cuenta")}</strong>
+                <div class="cf134-meta">${escapeHtml(i.account_number||"")} ${i.bureaus?`· ${escapeHtml(i.bureaus)}`:""} ${i.status_raw?`· ${escapeHtml(i.status_raw)}`:""}</div>
+                <div class="cf134-desc">${escapeHtml(i.challenge?.note||"Challenge Campaign")}</div>
+              </div>
+              <span class="cf134-chip">${escapeHtml(catLabel(i.category))}</span>
+            </div>
+            <div class="cf134-actions">
+              ${c
+                ? `<span class="cf134-chip">CAMPAIGN ${escapeHtml(c.status||"draft")} · ${escapeHtml(c.template_code||"ACE")}</span>
+                   ${c.status==="draft"?`<button class="btn btn-primary btn-sm" data-approve="${c.id}">Aprobar</button>`:""}
+                   ${["approved","sent"].includes(c.status)?`<button class="btn btn-ghost btn-sm" data-delivered="${c.id}">Registrar entrega</button>`:""}
+                   ${["delivered","waiting_response"].includes(c.status)?`<button class="btn btn-ghost btn-sm" data-response="${c.id}">Registrar respuesta</button><button class="btn btn-ghost btn-sm" data-deadline="${c.id}">Revisar plazo</button>`:""}`
+                : `<span class="cf134-chip">LISTO PARA CREAR</span>`}
+            </div>
+          </article>`;
+        }).join("")||`<div class="cf134-card">No se encontraron collections, charge-offs, late payments o inquiries activos.</div>`}
+      </section>
+    </div>`;
+
+    panel.querySelector("#cf134-build")?.addEventListener("click",async e=>{
+      const b=e.currentTarget;b.disabled=true;b.textContent="Construyendo…";
+      try{
+        const r=await api.post(`/aggressive-compliance/client/${clientId}/build-all-challenges`,{});
+        toast(`${r.created} challenge(s) creados · ${r.reused} ya existentes`,"success");
+        await load(panel,clientId);
+      }catch(err){toast(err.message||"No se pudieron crear los challenges","error");b.disabled=false;b.textContent="Construir todos los Challenges"}
+    });
+
+    panel.querySelectorAll("[data-approve]").forEach(b=>b.onclick=async()=>{
+      try{await api.post(`/aggressive-compliance/client/${clientId}/campaigns/${b.dataset.approve}/approve`,{});toast("Challenge aprobado","success");await load(panel,clientId)}
+      catch(e){toast(e.message||"No se pudo aprobar","error")}
+    });
+
+    panel.querySelectorAll("[data-delivered]").forEach(b=>b.onclick=async()=>{
+      const v=prompt("Fecha/hora de entrega (ISO) o deja vacío para usar ahora:","");
+      try{await api.post(`/aggressive-compliance/client/${clientId}/campaigns/${b.dataset.delivered}/delivered`,v?{delivered_at:v}:{});toast("Entrega registrada","success");await load(panel,clientId)}
+      catch(e){toast(e.message||"No se pudo registrar entrega","error")}
+    });
+
+    panel.querySelectorAll("[data-response]").forEach(b=>b.onclick=async()=>{
+      const s=prompt("Resumen de la respuesta:","");
+      if(s===null)return;
+      try{await api.post(`/aggressive-compliance/client/${clientId}/campaigns/${b.dataset.response}/response`,{response_summary:s});toast("Respuesta registrada","success");await load(panel,clientId)}
+      catch(e){toast(e.message||"No se pudo registrar respuesta","error")}
+    });
+
+    panel.querySelectorAll("[data-deadline]").forEach(b=>b.onclick=async()=>{
+      const ext=confirm("¿Existe una extensión documentada que deba aplicarse? Aceptar=Sí / Cancelar=No");
+      try{const r=await api.post(`/aggressive-compliance/client/${clientId}/campaigns/${b.dataset.deadline}/deadline-review`,{extension_applies:ext});toast(r.rationale||"Plazo revisado","success");await load(panel,clientId)}
+      catch(e){toast(e.message||"No se pudo revisar el plazo","error")}
+    });
+
+  }catch(e){
+    panel.innerHTML=`<div class="cf134-card"><strong>No se pudo cargar Challenge Campaign.</strong><p>${escapeHtml(e.message||String(e))}</p></div>`;
+  }
+}
+
+export async function installAggressiveComplianceTab(container,clientId){
+  style();
+  const nav=container.querySelector(".cf7-client-tabs"),panels=container.querySelector(".cf7-client-panels");
+  if(!nav||!panels||nav.querySelector('[data-tab="aggressive"]'))return;
+  const btn=document.createElement("button");btn.dataset.tab="aggressive";btn.textContent="Aggressive Compliance";nav.appendChild(btn);
+  const panel=document.createElement("section");panel.className="cf7-client-panel";panel.dataset.panel="aggressive";panels.appendChild(panel);
+  btn.addEventListener("click",async()=>{
+    nav.querySelectorAll("button").forEach(x=>x.classList.remove("active"));btn.classList.add("active");
+    panels.querySelectorAll(".cf7-client-panel").forEach(p=>p.classList.toggle("active",p===panel));
+    await load(panel,clientId);
+  });
+}
