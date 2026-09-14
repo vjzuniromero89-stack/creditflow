@@ -2,11 +2,20 @@ import { renderClientsList as renderListV10, renderClientDetail as renderDetailV
 import { renderCaseIntelligenceV10 } from "./case-intelligence-v10.js";
 import { api } from "../api.js";
 import { renderRealAuditV117 } from "./audit-v11-7.js";
+import { renderStrategyIntelligenceV122 } from "./strategy-intelligence-v12-2.js";
 
 export async function renderClientsList(container){await renderListV10(container)}
 
 export async function renderClientDetail(container,id){
  await renderDetailV10(container,id);
+
+ const strategyPanel=container.querySelector('[data-panel="estrategia"]');
+ if(strategyPanel&&!strategyPanel.querySelector("#cf122-intelligence")){
+   const host=document.createElement("div");
+   host.id="cf122-intelligence";
+   strategyPanel.insertAdjacentElement("afterbegin",host);
+   await renderStrategyIntelligenceV122(host,id);
+ }
 
  const history=container.querySelector('[data-panel="historial"]');
  if(history&&!history.querySelector("#cf10-intelligence")){
@@ -36,10 +45,6 @@ export async function renderClientDetail(container,id){
 
  if(stage==="report_audit"){
    workflow.classList.add("cf117-audit-mode");
-
-   // Critical v11.7.1 fix:
-   // put the real audit BEFORE the legacy workflow grid instead of appending
-   // it after the entire workflow where it could be clipped/hidden.
    const grid=workflow.querySelector(".cf8-workflow-grid");
    let host=workflow.querySelector("#cf117-audit-host");
    if(!host){
@@ -48,15 +53,8 @@ export async function renderClientDetail(container,id){
      if(grid) grid.insertAdjacentElement("beforebegin",host);
      else workflow.appendChild(host);
    }
-
-   // The old "Confirmar auditoría" panel is intentionally hidden while
-   // real item-by-item audit is active.
    if(grid) grid.hidden=true;
-
-   await renderRealAuditV117(host,id,{
-     onComplete:async()=>renderClientDetail(container,id)
-   });
-
+   await renderRealAuditV117(host,id,{onComplete:async()=>renderClientDetail(container,id)});
    host.scrollIntoView({behavior:"smooth",block:"start"});
  }else{
    workflow.classList.remove("cf117-audit-mode");
