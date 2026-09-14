@@ -81,7 +81,12 @@ export async function renderRepairWorkflowV8(container,clientId,opts={}){
  const connected=provider.connection_status==="connected";
  const keyOk=!!provider.credentials_configured;
  const identityActive=repairCase.current_stage==="identity_review";
- const currentAddress=client.address||client.address_line||client.current_address||"No registrada";
+ const streetAddress=client.address||client.address_line||client.current_address||"";
+ const cityStateZip=[
+   client.city||"",
+   [client.state||"",client.zip||client.zip_code||client.postal_code||""].filter(Boolean).join(" ")
+ ].filter(Boolean).join(", ");
+ const currentAddress=streetAddress||"No registrada";
  const dob=client.dob||client.date_of_birth||client.birth_date||"No disponible";
  const identityRows=addresses.map((a,i)=>`
    <div class="cf115-address-row">
@@ -112,7 +117,7 @@ export async function renderRepairWorkflowV8(container,clientId,opts={}){
        </article>
        <article class="cf1162-data-card">
          <div class="cf1162-icon">⌖</div>
-         <div><span>Dirección actual del expediente</span><strong>${escapeHtml(currentAddress)}</strong></div>
+         <div><span>Dirección actual del expediente</span><strong class="cf1165-address"><b>${escapeHtml(currentAddress)}</b>${cityStateZip?`<em>${escapeHtml(cityStateZip)}</em>`:`<em class="cf1165-missing">Falta ciudad, estado o ZIP</em>`}</strong></div>
        </article>
        <article class="cf1162-data-card">
          <div class="cf1162-icon">▣</div>
