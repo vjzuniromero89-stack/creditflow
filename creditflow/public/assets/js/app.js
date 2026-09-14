@@ -53,7 +53,7 @@ async function boot(){
 
 function renderShell(){
   root.innerHTML=`
-    <div class="app-shell cf7-shell">
+    <div class="cf7-shell">
       <aside class="sidebar cf7-sidebar" id="sidebar">
         <div class="cf7-brand">
           <div class="cf7-brand-mark">CF</div>
@@ -97,7 +97,7 @@ async function route(){
   const content=document.getElementById("content");
   const parts=(location.hash||"#/dashboard").replace("#/","").split("/").filter(Boolean);
   const base=parts[0]||"dashboard", id=parts[1];
-  content.className=`cf7-content-inner view-${base}${id?" view-detail":""}`;
+  content.className=`cf7-content cf7-content-inner view-${base}${id?" view-detail":""}`;
 
   try{
     if(base==="dashboard"){setActive("dashboard");setTitle("Centro de control","Prioridades, resultados y trabajo pendiente","Operación");await renderDashboardV7(content);}
