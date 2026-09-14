@@ -1,0 +1,69 @@
+CREDITFLOW — ORGANIZACIÓN TOTAL v5
+
+Revisé las pantallas activas y esta fase organiza la DISTRIBUCIÓN, no solo los colores.
+
+REEMPLAZAR
+1. creditflow/public/index.html
+2. creditflow/public/assets/js/sections/clients-auto.js
+
+AGREGAR
+3. creditflow/public/assets/css/organization-v5.css
+
+NO BORRAR
+- redesign-v4.css
+- clients.js
+- case-engine.js
+- backend
+
+CAMBIOS PRINCIPALES
+
+CLIENTES — LISTA
+- filtros y acciones quedan en una barra de control;
+- búsqueda y botones alineados;
+- tabla como bloque principal.
+
+EXPEDIENTE DEL CLIENTE
+Orden:
+1. Motor automático
+2. Perfil + actividad
+3. Identidad y acceso (portal + freeze)
+4. Credit Score
+5. Documentos
+6. Negativos / colecciones + ganancias
+7. Direcciones
+8. Cartas
+
+La información del perfil se distribuye como una ficha real, no como texto suelto.
+
+DASHBOARD
+- 4 KPI uniformes;
+- pendientes tienen más espacio;
+- actividad queda como columna secundaria.
+
+GANANCIAS
+- 4 métricas iguales;
+- remociones tienen prioridad;
+- clientes queda como columna secundaria.
+
+CARTAS
+- filtros convertidos en toolbar;
+- detalle de carta con contenido principal y acciones laterales;
+- acción siguiente permanece visible en desktop.
+
+ENVÍOS
+- lote listo en tarjetas de 2 columnas;
+- historial separado debajo.
+
+PLANTILLAS
+- acciones agrupadas arriba;
+- categorías conservan la estrategia existente.
+
+USUARIOS
+- búsqueda y generación de accesos quedan juntas;
+- acciones de cada cliente alineadas.
+
+AJUSTES
+- seguridad e integración USPS en dos paneles iguales;
+- equipo queda debajo.
+
+Después de subir: espera Cloudflare y usa Ctrl+F5.
