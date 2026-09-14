@@ -119,19 +119,31 @@ function compareGroup(group){
  return findings;
 }
 function groupCard(group,checks=[]){
- const first=group[0],findings=compareGroup(group);
+ const first=group[0];
+ const findings=compareGroup(group);
  const bureauSet=[...new Set(group.map(x=>bureauName(x.bureaus)))];
+
+ const findingsHtml=findings.length
+  ? `<div class="cf118-findings">${
+      findings.map(f=>`<div>
+        <strong>${escapeHtml(f.label)}</strong>
+        <span>${f.values.map(v=>`${escapeHtml(v.bureau)}: <b>${escapeHtml(String(v.value))}</b>`).join(" · ")}</span>
+      </div>`).join("")
+    }</div>`
+  : "";
+
  return `<article class="cf118-group ${findings.length?"has-findings":"no-findings"}">
    <div class="cf118-group-head">
-    <div><strong>${escapeHtml(first.creditor_name||"Cuenta")}</strong>
-      <span>${escapeHtml(maskAccount(first.account_number))} · ${bureauSet.length} buró(s)</span></div>
+    <div>
+      <strong>${escapeHtml(first.creditor_name||"Cuenta")}</strong>
+      <span>${escapeHtml(maskAccount(first.account_number))} · ${bureauSet.length} buró(s)</span>
+    </div>
     <b>${findings.length?`⚠ ${findings.length} inconsistencia(s)`:"✓ Sin diferencias detectadas"}</b>
    </div>
-   ${findings.length?`<div class="cf118-findings">${findings.map(f=>`<div><strong>${escapeHtml(f.label)}</strong><span>${f.values.map(v=>`${escapeHtml(v.bureau)}: <b>${escapeHtml(String(v.value))}</b>`).join(" · ")}</span></div>`:""}
+   ${findingsHtml}
    ${collectorComplianceCard(group,checks)}
  </article>`;
 }
-
 function assessmentModal(item,onSaved){
  const a=item.assessment||{};
  const {close,body}=openModal({
