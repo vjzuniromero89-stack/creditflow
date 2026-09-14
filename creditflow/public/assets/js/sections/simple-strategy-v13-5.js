@@ -27,13 +27,13 @@ export async function renderSimpleStrategyV135(container,clientId,opts={}){
   container.innerHTML=`<section class="cf135">
     <div class="cf135-hero">
       <div>
-        <div class="cf7-eyebrow">CreditFlow Strategy Engine · v13.5.2</div>
+        <div class="cf7-eyebrow">CreditFlow Strategy Engine · v13.5.3</div>
         <h2>${complete?"Estrategia completa":started?"Completar estrategia":"Empezar estrategia"}</h2>
         <p>${complete
-          ?"CreditFlow preparó una carta para cada cuenta negativa elegible. El siguiente paso es aprobar y mover las cartas listas a Envíos certificados."
+          ?"Cada negativo tiene su carta de Round 1 dirigida automáticamente al buró que lo reporta. CreditFlow obtiene el nombre y la dirección postal de Experian, Equifax o TransUnion sin que tengas que escribirla."
           :started
-            ?`Hay ${st.remaining||0} cuenta(s) negativa(s) que todavía necesitan su carta de estrategia.`
-            :"Un solo botón crea la estrategia para collections, charge-offs, late payments, settled accounts e inquiries."}</p>
+            ?`Hay ${st.remaining||0} cuenta(s) negativa(s) que todavía necesitan su carta.`
+            :"CreditFlow crea una carta para cada negativo y la dirige automáticamente al buró correspondiente."}</p>
       </div>
       ${complete
         ? `<button class="btn btn-primary" id="cf135-approve">Aprobar y mandar a Envíos</button>`
@@ -41,9 +41,9 @@ export async function renderSimpleStrategyV135(container,clientId,opts={}){
     </div>
 
     <div class="cf135-flow">
-      <div class="cf135-step"><strong>1. Empezar estrategia</strong><small>todas las cuentas negativas</small></div>
-      <div class="cf135-step"><strong>2. Crear cartas</strong><small>una ruta legal por categoría</small></div>
-      <div class="cf135-step"><strong>3. Aprobar</strong><small>revisión final antes del correo</small></div>
+      <div class="cf135-step"><strong>1. Estrategia</strong><small>todos los negativos</small></div>
+      <div class="cf135-step"><strong>2. Buró automático</strong><small>Experian / Equifax / TransUnion</small></div>
+      <div class="cf135-step"><strong>3. Aprobar</strong><small>dirección ya resuelta</small></div>
       <div class="cf135-step"><strong>4. Envíos</strong><small>PostGrid / Certified Mail</small></div>
     </div>
 
@@ -54,15 +54,15 @@ export async function renderSimpleStrategyV135(container,clientId,opts={}){
       <div class="cf135-kpi"><span>${st.missing_address||0}</span><strong>FALTA DIRECCIÓN</strong></div>
     </div>
 
-    ${st.remaining?`<div class="cf135-note">Faltan ${st.remaining} carta(s) para completar la estrategia de todas las cuentas negativas.</div>`:""}
-    ${st.missing_address?`<div class="cf135-note">${st.missing_address} carta(s) necesitan dirección postal del acreedor/collector antes de pasar a Envíos. Esto es un requisito operativo, no una etapa de evidencia.</div>`:""}
+    ${st.remaining?`<div class="cf135-note">Faltan ${st.remaining} carta(s) para completar la estrategia.</div>`:""}
+    ${st.missing_address?`<div class="cf135-note">${st.missing_address} carta(s) se corregirán automáticamente usando la dirección oficial del buró al aprobar.</div>`:""}
   </section>`;
 
   container.querySelector("#cf135-start")?.addEventListener("click",async e=>{
     const b=e.currentTarget;b.disabled=true;b.textContent="Preparando estrategia…";
     try{
       const r=await api.post(`/simple-strategy/client/${clientId}/start`,{});
-      toast(`${r.generated} de ${r.negatives} carta(s) de estrategia preparadas`,"success");
+      toast(`${r.generated} carta(s) creadas · ${r.updated} actualizadas con dirección del buró`,"success");
       await renderSimpleStrategyV135(container,clientId,opts);
       opts.onChanged?.();
     }catch(err){
@@ -75,11 +75,7 @@ export async function renderSimpleStrategyV135(container,clientId,opts={}){
     const b=e.currentTarget;b.disabled=true;b.textContent="Preparando Envíos…";
     try{
       const r=await api.post(`/simple-strategy/client/${clientId}/approve-all`,{});
-      if(r.needs_addresses){
-        toast(`${r.missing_address} carta(s) necesitan dirección postal antes de pasar a Envíos`,"warning");
-      }else{
-        toast(`${r.ready} carta(s) listas en Envíos certificados`,"success");
-      }
+      toast(`${r.ready} carta(s) listas en Envíos certificados`,"success");
       await renderSimpleStrategyV135(container,clientId,opts);
       opts.onChanged?.();
     }catch(err){
