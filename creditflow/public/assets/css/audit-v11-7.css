@@ -12,3 +12,21 @@
 .cf117-modal-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}.cf117-modal-summary>div{padding:12px;border:1px solid rgba(148,163,184,.13);border-radius:11px}.cf117-modal-summary span,.cf117-modal-summary strong{display:block}.cf117-modal-summary span{font-size:11px;color:#8197a8}.cf117-modal-summary strong{margin-top:4px;font-size:13px}
 .cf117-confirmations{display:grid;gap:9px;margin-top:14px}.cf117-confirmations label{padding:11px;border:1px solid rgba(148,163,184,.12);border-radius:10px}.cf117-danger{color:#f4c76d}
 @media(max-width:760px){.cf117-item{grid-template-columns:34px 1fr}.cf117-item>button{grid-column:1/-1}.cf117-modal-summary{grid-template-columns:1fr 1fr}.cf117-footer,.cf117-head{flex-direction:column;align-items:stretch}.cf117-progress{text-align:left}}
+
+
+/* v11.7.1 — audit visibility fix */
+#cf8-repair-workflow.cf117-audit-mode .cf8-workflow-grid[hidden]{
+  display:none !important;
+}
+#cf117-audit-host{
+  display:block !important;
+  width:100% !important;
+  min-width:0 !important;
+  margin-top:18px !important;
+  overflow:visible !important;
+}
+#cf117-audit-host .cf117-audit{
+  display:block !important;
+  width:100% !important;
+  box-sizing:border-box !important;
+}
