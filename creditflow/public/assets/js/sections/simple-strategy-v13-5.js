@@ -27,7 +27,7 @@ export async function renderSimpleStrategyV135(container,clientId,opts={}){
   container.innerHTML=`<section class="cf135">
     <div class="cf135-hero">
       <div>
-        <div class="cf7-eyebrow">CreditFlow Strategy Engine · v13.5.4</div>
+        <div class="cf7-eyebrow">CreditFlow Strategy Engine · v13.5.5</div>
         <h2>${complete?"Estrategia completa":started?"Completar estrategia":"Empezar estrategia"}</h2>
         <p>${complete
           ?"Cada negativo tiene su carta Round 1 al buró correspondiente. Además, CreditFlow identifica automáticamente el acreedor o collector del tradeline y guarda su dirección verificada para los siguientes envíos."
@@ -79,7 +79,7 @@ export async function renderSimpleStrategyV135(container,clientId,opts={}){
       await renderSimpleStrategyV135(container,clientId,opts);
       opts.onChanged?.();
     }catch(err){
-      toast(err.message||"No se pudieron preparar los envíos","error");
+      toast(err.detail||err.message||"No se pudieron preparar los envíos","error");
       b.disabled=false;b.textContent="Aprobar y mandar a Envíos";
     }
   });
