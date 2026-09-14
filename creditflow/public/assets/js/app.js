@@ -5,7 +5,7 @@ import { initials } from "./utils.js";
 
 import { renderLoginOrSetup } from "./sections/auth-screens.js";
 import { renderDashboardV7 } from "./sections/dashboard-v7.js";
-import { renderClientsList, renderClientDetail } from "./sections/clients-v7.js";
+import { renderClientsList, renderClientDetail } from "./sections/clients-v8.js";
 import { renderEarningsV7 } from "./sections/earnings-v7.js";
 import {
   renderTemplatesV7,
