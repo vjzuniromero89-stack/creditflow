@@ -1,6 +1,5 @@
 import { api } from "../api.js";
 import { toast } from "../toast.js";
-import { escapeHtml } from "../utils.js";
 
 function style(){
   if(document.getElementById("cf135-style"))return;
@@ -19,27 +18,31 @@ function style(){
 export async function renderSimpleStrategyV135(container,clientId,opts={}){
   style();
   container.innerHTML=`<div class="card">Cargando estrategia…</div>`;
-  let st={negatives:0,generated:0,ready:0,missing_address:0,drafts:0};
+  let st={negatives:0,generated:0,remaining:0,complete:false,ready:0,missing_address:0,drafts:0};
   try{st=await api.get(`/simple-strategy/client/${clientId}/status`)}catch{}
 
   const started=st.generated>0;
+  const complete=!!st.complete;
+
   container.innerHTML=`<section class="cf135">
     <div class="cf135-hero">
       <div>
-        <div class="cf7-eyebrow">CreditFlow Strategy Engine</div>
-        <h2>${started?"Estrategia preparada":"Empezar estrategia"}</h2>
-        <p>${started
-          ?"CreditFlow ya creó la estrategia para las cuentas negativas elegibles. El siguiente paso es aprobar las cartas y enviarlas a Envíos certificados."
-          :"Un solo botón crea la estrategia para collections, charge-offs, late payments e inquiries. No hay una sección separada de Aggressive Compliance, ni auditoría/investigación manual previa."}</p>
+        <div class="cf7-eyebrow">CreditFlow Strategy Engine · v13.5.2</div>
+        <h2>${complete?"Estrategia completa":started?"Completar estrategia":"Empezar estrategia"}</h2>
+        <p>${complete
+          ?"CreditFlow preparó una carta para cada cuenta negativa elegible. El siguiente paso es aprobar y mover las cartas listas a Envíos certificados."
+          :started
+            ?`Hay ${st.remaining||0} cuenta(s) negativa(s) que todavía necesitan su carta de estrategia.`
+            :"Un solo botón crea la estrategia para collections, charge-offs, late payments, settled accounts e inquiries."}</p>
       </div>
-      ${started
+      ${complete
         ? `<button class="btn btn-primary" id="cf135-approve">Aprobar y mandar a Envíos</button>`
-        : `<button class="btn btn-primary" id="cf135-start">Empezar estrategia</button>`}
+        : `<button class="btn btn-primary" id="cf135-start">${started?"Completar estrategia":"Empezar estrategia"}</button>`}
     </div>
 
     <div class="cf135-flow">
-      <div class="cf135-step"><strong>1. Empezar estrategia</strong><small>analiza categorías negativas</small></div>
-      <div class="cf135-step"><strong>2. Crear cartas</strong><small>plantilla correcta por tipo</small></div>
+      <div class="cf135-step"><strong>1. Empezar estrategia</strong><small>todas las cuentas negativas</small></div>
+      <div class="cf135-step"><strong>2. Crear cartas</strong><small>una ruta legal por categoría</small></div>
       <div class="cf135-step"><strong>3. Aprobar</strong><small>revisión final antes del correo</small></div>
       <div class="cf135-step"><strong>4. Envíos</strong><small>PostGrid / Certified Mail</small></div>
     </div>
@@ -51,17 +54,21 @@ export async function renderSimpleStrategyV135(container,clientId,opts={}){
       <div class="cf135-kpi"><span>${st.missing_address||0}</span><strong>FALTA DIRECCIÓN</strong></div>
     </div>
 
-    ${st.missing_address?`<div class="cf135-note">${st.missing_address} carta(s) todavía no pueden pasar a Envíos porque falta la dirección postal del acreedor/collector. Eso es un requisito operativo, no una etapa de evidencia.</div>`:""}
+    ${st.remaining?`<div class="cf135-note">Faltan ${st.remaining} carta(s) para completar la estrategia de todas las cuentas negativas.</div>`:""}
+    ${st.missing_address?`<div class="cf135-note">${st.missing_address} carta(s) necesitan dirección postal del acreedor/collector antes de pasar a Envíos. Esto es un requisito operativo, no una etapa de evidencia.</div>`:""}
   </section>`;
 
   container.querySelector("#cf135-start")?.addEventListener("click",async e=>{
     const b=e.currentTarget;b.disabled=true;b.textContent="Preparando estrategia…";
     try{
       const r=await api.post(`/simple-strategy/client/${clientId}/start`,{});
-      toast(`${r.generated} carta(s) de estrategia preparadas`,"success");
+      toast(`${r.generated} de ${r.negatives} carta(s) de estrategia preparadas`,"success");
       await renderSimpleStrategyV135(container,clientId,opts);
       opts.onChanged?.();
-    }catch(err){toast(err.message||"No se pudo iniciar la estrategia","error");b.disabled=false;b.textContent="Empezar estrategia"}
+    }catch(err){
+      toast(err.message||"No se pudo completar la estrategia","error");
+      b.disabled=false;b.textContent=started?"Completar estrategia":"Empezar estrategia";
+    }
   });
 
   container.querySelector("#cf135-approve")?.addEventListener("click",async e=>{
@@ -75,6 +82,9 @@ export async function renderSimpleStrategyV135(container,clientId,opts={}){
       }
       await renderSimpleStrategyV135(container,clientId,opts);
       opts.onChanged?.();
-    }catch(err){toast(err.message||"No se pudieron preparar los envíos","error");b.disabled=false;b.textContent="Aprobar y mandar a Envíos"}
+    }catch(err){
+      toast(err.message||"No se pudieron preparar los envíos","error");
+      b.disabled=false;b.textContent="Aprobar y mandar a Envíos";
+    }
   });
 }
