@@ -1,0 +1,61 @@
+CREDITFLOW — REPAIR RESET / PAUSE v9.1
+=====================================
+
+NO REQUIERE SQL NI MIGRACION.
+
+REEMPLAZA EN GITHUB
+-------------------
+1. creditflow/wrangler.jsonc
+2. creditflow/public/index.html
+3. creditflow/public/assets/js/app.js
+
+AGREGA EN GITHUB
+----------------
+4. creditflow/src/index-v9-1.js
+5. creditflow/public/assets/js/sections/clients-v9-1.js
+6. creditflow/public/assets/css/repair-reset-v9-1.css
+
+IMPORTANTE
+----------
+v9.1 asume que ya subiste v9.
+
+QUE AGREGA
+----------
+PAUSAR REPARACION:
+- mantiene todo el estado
+- solo cambia el caso a paused
+- luego puedes Reanudar
+
+REINICIAR REPARACION:
+- elimina repair_cases del cliente
+- elimina repair_case_events
+- elimina dispute_assessments
+- elimina strategy_actions
+- elimina strategy_runs
+- elimina trabajos de CertifiedMailLabels que aún no fueron enviados
+- elimina únicamente cartas generadas por strategy_actions si siguen en borrador/lista y nunca fueron enviadas
+
+NUNCA BORRA:
+- cliente
+- reporte de crédito
+- credit_items / negativos
+- documentos
+- direcciones
+- scores
+- removal_events
+- payment_events
+- cartas enviadas
+- mailings / tracking ya existente
+
+DESPUES DE SUBIR
+----------------
+1. Espera deploy
+2. Ctrl + F5
+3. Abre Nelson
+4. Verás:
+   - Pausar
+   - Reiniciar reparación
+5. Pulsa Reiniciar reparación
+6. Marca la casilla de confirmación
+7. Confirma
+8. Nelson volverá a mostrar "Empezar reparación"
