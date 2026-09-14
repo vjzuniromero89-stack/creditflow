@@ -27,13 +27,13 @@ export async function renderSimpleStrategyV135(container,clientId,opts={}){
   container.innerHTML=`<section class="cf135">
     <div class="cf135-hero">
       <div>
-        <div class="cf7-eyebrow">CreditFlow Strategy Engine · v13.5.5</div>
+        <div class="cf7-eyebrow">CreditFlow Strategy Engine · v13.6</div>
         <h2>${complete?"Estrategia completa":started?"Completar estrategia":"Empezar estrategia"}</h2>
         <p>${complete
-          ?"Cada negativo tiene su carta Round 1 al buró correspondiente. Además, CreditFlow identifica automáticamente el acreedor o collector del tradeline y guarda su dirección verificada para los siguientes envíos."
+          ?"Estrategia dual preparada: cartas a los burós que reportan cada negativo y, al mismo tiempo, una carta directa al acreedor o collector responsable de cada cuenta."
           :started
             ?`Hay ${st.remaining||0} cuenta(s) negativa(s) que todavía necesitan su carta.`
-            :"CreditFlow crea una carta para cada negativo y la dirige automáticamente al buró correspondiente."}</p>
+            :"CreditFlow crea dos frentes coordinados: buró(s) que reportan la cuenta y acreedor/collector responsable. Las cartas directas se deduplican por cuenta para no enviar tres veces lo mismo al mismo acreedor."}</p>
       </div>
       ${complete
         ? `<button class="btn btn-primary" id="cf135-approve">Aprobar y mandar a Envíos</button>`
@@ -41,17 +41,17 @@ export async function renderSimpleStrategyV135(container,clientId,opts={}){
     </div>
 
     <div class="cf135-flow">
-      <div class="cf135-step"><strong>1. Estrategia</strong><small>todos los negativos</small></div>
-      <div class="cf135-step"><strong>2. Buró automático</strong><small>Experian / Equifax / TransUnion</small></div>
-      <div class="cf135-step"><strong>3. Aprobar</strong><small>dirección ya resuelta</small></div>
-      <div class="cf135-step"><strong>4. Envíos</strong><small>PostGrid / Certified Mail</small></div>
+      <div class="cf135-step"><strong>1. Negativo</strong><small>clasifica la cuenta</small></div>
+      <div class="cf135-step"><strong>2. Doble destino</strong><small>buró + acreedor / collector</small></div>
+      <div class="cf135-step"><strong>3. Aprobar</strong><small>todas las cartas del round</small></div>
+      <div class="cf135-step"><strong>4. Envíos agrupados</strong><small>un certified por destinatario</small></div>
     </div>
 
     <div class="cf135-kpis">
-      <div class="cf135-kpi"><span>${st.negatives||0}</span><strong>NEGATIVOS</strong></div>
-      <div class="cf135-kpi"><span>${st.generated||0}</span><strong>CARTAS GENERADAS</strong></div>
+      <div class="cf135-kpi"><span>${st.cra_generated||0}/${st.cra_expected||0}</span><strong>CARTAS A BURÓS</strong></div>
+      <div class="cf135-kpi"><span>${st.direct_generated||0}/${st.direct_expected||0}</span><strong>CARTAS A ACREEDOR / COLLECTOR</strong></div>
+      <div class="cf135-kpi"><span>${st.generated||0}</span><strong>TOTAL CARTAS</strong></div>
       <div class="cf135-kpi"><span>${st.ready||0}</span><strong>LISTAS PARA ENVÍO</strong></div>
-      <div class="cf135-kpi"><span>${st.entities_resolved||0}</span><strong>ACREEDOR / COLLECTOR DETECTADO</strong></div>
     </div>
 
     ${st.remaining?`<div class="cf135-note">Faltan ${st.remaining} carta(s) para completar la estrategia.</div>`:""}
