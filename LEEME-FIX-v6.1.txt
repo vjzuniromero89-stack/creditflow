@@ -1,0 +1,38 @@
+CREDITFLOW — FIX SUPABASE RETRY v6.1
+
+PROBLEMA
+--------
+La app muestra:
+Supabase exec_sql falló (HTTP 502): {"message":"Bad Gateway"}
+
+El SUPABASE_URL actual está correcto.
+El problema es que db-shim.js hacía un solo intento y cualquier 502 temporal
+derribaba toda la aplicación.
+
+SOLUCIÓN
+--------
+REEMPLAZAR SOLAMENTE:
+
+creditflow/src/db-shim.js
+
+NO CAMBIAR:
+- wrangler.jsonc
+- src/index.js
+- src/index-auto.js
+- archivos de estrategia v6
+- archivos CSS/JS del frontend
+
+QUÉ HACE EL FIX
+---------------
+- Hasta 4 intentos automáticos.
+- Retry para 408, 425, 429, 500, 502, 503 y 504.
+- Backoff progresivo: aprox. 350ms, 700ms, 1400ms.
+- Respeta Retry-After cuando Supabase lo envía.
+- Errores SQL reales (400/401/403, etc.) NO se ocultan.
+
+DESPUÉS
+-------
+1. Sube/reemplaza db-shim.js.
+2. Espera el deploy de Cloudflare.
+3. Haz Ctrl+F5.
+4. Prueba Login/Dashboard/Ganancias.
