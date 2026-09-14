@@ -55,6 +55,30 @@ function bureauName(v){
  if(s.includes("transunion")||s.includes("trans union"))return "TransUnion";
  return String(v||"Otro");
 }
+
+function isCollectorItem(item){
+ const c=norm(item.category), s=norm(item.status_raw||item.status), n=norm(item.creditor_name);
+ return c.includes("collection")||c.includes("coleccion")||c.includes("charge")||
+        s.includes("collection")||s.includes("charge off")||s.includes("charge-off")||
+        n.includes("collection")||n.includes("recovery")||n.includes("receivable");
+}
+function collectorComplianceCard(group){
+ const item=group[0];
+ if(!isCollectorItem(item))return "";
+ const state="Maryland";
+ const source="Maryland Office of Financial Regulation / NMLS";
+ return `<section class="cf119-compliance">
+   <div class="cf119-title"><div><span>COLLECTOR COMPLIANCE</span><strong>${escapeHtml(item.creditor_name||"Collector")}</strong></div><b class="cf119-review">REVISIÓN REQUERIDA</b></div>
+   <div class="cf119-grid">
+    <div><small>Jurisdicción de revisión</small><strong>${state}</strong></div>
+    <div><small>Tipo</small><strong>Collection / debt collector</strong></div>
+    <div><small>Licencia</small><strong>⚠ Pendiente de verificación oficial</strong></div>
+    <div><small>Fuente prevista</small><strong>${source}</strong></div>
+   </div>
+   <p>CreditFlow no presume que “no encontrada” significa “sin licencia”. La licencia debe verificarse por nombre legal/NMLS y vigencia antes de usar el hallazgo.</p>
+  </section>`;
+}
+
 function smartGroups(items){
  const map=new Map();
  for(const item of items){
@@ -95,7 +119,8 @@ function groupCard(group){
       <span>${escapeHtml(maskAccount(first.account_number))} · ${bureauSet.length} buró(s)</span></div>
     <b>${findings.length?`⚠ ${findings.length} inconsistencia(s)`:"✓ Sin diferencias detectadas"}</b>
    </div>
-   ${findings.length?`<div class="cf118-findings">${findings.map(f=>`<div><strong>${escapeHtml(f.label)}</strong><span>${f.values.map(v=>`${escapeHtml(v.bureau)}: <b>${escapeHtml(String(v.value))}</b>`).join(" · ")}</span></div>`).join("")}</div>`:""}
+   ${findings.length?`<div class="cf118-findings">${findings.map(f=>`<div><strong>${escapeHtml(f.label)}</strong><span>${f.values.map(v=>`${escapeHtml(v.bureau)}: <b>${escapeHtml(String(v.value))}</b>`).join(" · ")}</span></div>`:""}
+   ${collectorComplianceCard(group)}
  </article>`;
 }
 
