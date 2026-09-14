@@ -60,3 +60,10 @@
 .cf119-grid strong{display:block;margin-top:3px;font-size:10px;line-height:1.35}
 .cf119-compliance p{margin:9px 0 0;color:var(--cf7-muted);font-size:10px;line-height:1.45}
 @media(max-width:850px){.cf119-grid{grid-template-columns:1fr 1fr}}
+
+/* v12.1 compliance review */
+.cf121-review-btn{margin-top:10px}
+.cf121-source{margin-top:9px;font-size:10px;color:var(--cf7-muted)}
+.cf121-warning{display:flex;flex-direction:column;gap:3px;padding:10px 12px;margin-bottom:12px;border:1px solid rgba(245,190,70,.28);border-radius:9px}
+.cf121-warning span,.cf121-human{font-size:11px;color:var(--cf7-muted)}
+.cf121-human{display:block;margin:12px 0}
