@@ -3,6 +3,7 @@ import { renderCaseIntelligenceV10 } from "./case-intelligence-v10.js";
 import { api } from "../api.js";
 import { renderRealAuditV117 } from "./audit-v11-7.js";
 import { renderStrategyIntelligenceV122 } from "./strategy-intelligence-v12-2.js";
+import { applyWorkflowGuardV124 } from "./workflow-guard-v12-4.js";
 
 export async function renderClientsList(container){await renderListV10(container)}
 
@@ -28,7 +29,10 @@ export async function renderClientDetail(container,id){
  let rs=null; try{rs=await api.get(`/repair-cases/${id}`)}catch{}
  let stage=rs?.case?.current_stage;
  const workflow=container.querySelector("#cf8-repair-workflow");
- if(!workflow)return;
+ if(!workflow){
+   await applyWorkflowGuardV124(container,id);
+   return;
+ }
 
  let strategy=null; try{strategy=await api.get(`/strategy/client/${id}`)}catch{}
  const active=(strategy?.items||[]).filter(x=>x.removed_status!=="eliminado");
@@ -55,8 +59,9 @@ export async function renderClientDetail(container,id){
    }
    if(grid) grid.hidden=true;
    await renderRealAuditV117(host,id,{onComplete:async()=>renderClientDetail(container,id)});
-   host.scrollIntoView({behavior:"smooth",block:"start"});
  }else{
    workflow.classList.remove("cf117-audit-mode");
  }
+
+ await applyWorkflowGuardV124(container,id);
 }
