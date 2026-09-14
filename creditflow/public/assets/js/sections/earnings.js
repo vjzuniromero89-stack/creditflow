@@ -1,32 +1,7 @@
 import { api } from "../api.js";
 import { escapeHtml } from "../utils.js";
 import { money } from "./collections.js";
-
-/*
-  CreditFlow — Ganancias Inteligente
-
-  Esta vista NO suma cuentas que todavía aparecen en el reporte.
-  Solo considera ganancia confirmada cuando el backend marca el ítem
-  como removed_status === "eliminado".
-
-  El backend ya hace esa detección automáticamente al importar un
-  reporte nuevo: compara los ítems anteriores con los actuales.
-*/
-
-function categoryName(categories, category) {
-  const row = categories.find((c) => c.category === category);
-  return row?.label || category || "Otro";
-}
-
-function feeFor(categories, category) {
-  const row = categories.find((c) => c.category === category);
-  return Number(row?.fee || 0);
-}
-
-function removalValue(item, categories) {
-  const units = Number(item.bureau_count || 1);
-  return feeFor(categories, item.category) * units;
-}
+import { toast } from "../toast.js";
 
 function dateLabel(value) {
   if (!value) return "Sin fecha";
@@ -39,304 +14,192 @@ function dateLabel(value) {
   }).format(d);
 }
 
-function percent(value, total) {
-  if (!total) return 0;
-  return Math.max(0, Math.min(100, Math.round((value / total) * 100)));
+function eventLabel(ev) {
+  if (ev.status === "reappeared") return "Reapareció después";
+  return "Remoción confirmada";
 }
 
 export async function renderEarningsDashboard(container) {
-  container.innerHTML = `
-    <div class="smart-profit-loading">
-      <div class="boot-bar"><span></span></div>
-      <div class="text-sm text-muted">Analizando remociones y ganancias…</div>
-    </div>
-  `;
+  container.innerHTML = `<div class="card">Cargando ganancias…</div>`;
 
-  const [{ categories, totals, pricing }, { clients }, { credit_items: items }] = await Promise.all([
+  const [
+    { categories, totals },
+    { clients },
+    { events },
+  ] = await Promise.all([
     api.get("/credit-items/earnings"),
     api.get("/credit-items/earnings-by-client"),
-    api.get("/credit-items"),
+    api.get("/removal-events"),
   ]);
 
-  const allItems = Array.isArray(items) ? items : [];
-  const removed = allItems.filter((it) => it.removed_status === "eliminado");
-  const active = allItems.filter((it) => it.removed_status !== "eliminado");
+  const confirmed = Number(totals.real || 0);
+  const paid = Number(totals.paid || 0);
+  const owed = Number(totals.owed || 0);
+  const potential = Number(totals.pending || 0);
+  const reappeared = Number(totals.reappeared_count || 0);
 
-  const confirmedProfit = removed.reduce((sum, it) => sum + removalValue(it, categories), 0);
-  const potentialProfit = active.reduce((sum, it) => sum + removalValue(it, categories), 0);
-  const totalOpportunity = confirmedProfit + potentialProfit;
-
-  const paidProfit = removed
-    .filter((it) => it.billing_status === "pagado")
-    .reduce((sum, it) => sum + removalValue(it, categories), 0);
-
-  const receivableProfit = Math.max(0, confirmedProfit - paidProfit);
-
-  const removalRate = percent(removed.length, allItems.length);
-
-  const removedByClient = new Map();
-  for (const it of removed) {
-    const key = String(it.client_id);
-    const current = removedByClient.get(key) || {
-      client_id: it.client_id,
-      client_name: it.client_name || "Cliente",
-      removed_count: 0,
-      profit: 0,
-      paid: 0,
-      receivable: 0,
-    };
-    const amount = removalValue(it, categories);
-    current.removed_count += Number(it.bureau_count || 1);
-    current.profit += amount;
-    if (it.billing_status === "pagado") current.paid += amount;
-    else current.receivable += amount;
-    removedByClient.set(key, current);
-  }
-
-  const clientRows = [...removedByClient.values()]
-    .sort((a, b) => b.profit - a.profit);
-
-  const recentRemoved = [...removed]
-    .sort((a, b) => {
-      const da = new Date(a.updated_at || a.created_at || 0).getTime();
-      const db = new Date(b.updated_at || b.created_at || 0).getTime();
-      return db - da;
-    })
-    .slice(0, 12);
+  const recent = (events || []).slice(0, 12);
+  const removalRate =
+    (Number(totals.real_count || 0) + Number(totals.pending_count || 0)) > 0
+      ? Math.round(
+          (Number(totals.real_count || 0) /
+            (Number(totals.real_count || 0) + Number(totals.pending_count || 0))) *
+            100
+        )
+      : 0;
 
   container.innerHTML = `
-    <div class="smart-profit">
-
-      <div class="smart-profit-hero">
+    <div class="earnings-smart">
+      <section class="earnings-hero">
         <div>
-          <div class="smart-profit-eyebrow">Ganancias automáticas</div>
+          <div class="earnings-eyebrow">Historial permanente</div>
           <h2>Centro inteligente de remociones</h2>
           <p>
-            CreditFlow compara cada reporte nuevo con el anterior. Si una colección o ítem negativo
-            deja de aparecer en ese buró, se considera una remoción detectada y su tarifa entra
-            automáticamente en la ganancia confirmada.
+            La ganancia confirmada ahora nace de eventos históricos de remoción.
+            Cambiar tarifas después o importar otro reporte no reescribe lo que ya ocurrió.
           </p>
         </div>
-        <div class="smart-profit-status">
-          <span class="smart-profit-dot"></span>
-          Detección automática activa
-        </div>
-      </div>
+        <div class="earnings-auto-pill">● Detección automática activa</div>
+      </section>
 
-      <div class="smart-profit-grid">
-        <article class="smart-profit-card smart-profit-primary">
-          <div class="smart-profit-label">Ganancia confirmada</div>
-          <div class="smart-profit-value">${money(confirmedProfit)}</div>
-          <div class="smart-profit-meta">
-            ${removed.length} ítem(s) ya no aparecen en el reporte
-          </div>
+      <section class="earnings-kpis">
+        <article class="earnings-kpi primary">
+          <span>Ganancia confirmada</span>
+          <strong>${money(confirmed)}</strong>
+          <small>${totals.real_count || 0} remoción(es) histórica(s)</small>
         </article>
-
-        <article class="smart-profit-card">
-          <div class="smart-profit-label">Por cobrar</div>
-          <div class="smart-profit-value">${money(receivableProfit)}</div>
-          <div class="smart-profit-meta">
-            Ganancia detectada que todavía no está marcada como pagada
-          </div>
+        <article class="earnings-kpi">
+          <span>Por cobrar</span>
+          <strong>${money(owed)}</strong>
+          <small>${totals.owed_count || 0} pendiente(s) de cobro</small>
         </article>
-
-        <article class="smart-profit-card">
-          <div class="smart-profit-label">Cobrado</div>
-          <div class="smart-profit-value">${money(paidProfit)}</div>
-          <div class="smart-profit-meta">
-            De las remociones confirmadas
-          </div>
+        <article class="earnings-kpi">
+          <span>Cobrado</span>
+          <strong>${money(paid)}</strong>
+          <small>${totals.paid_count || 0} pagado(s)</small>
         </article>
-
-        <article class="smart-profit-card">
-          <div class="smart-profit-label">Potencial</div>
-          <div class="smart-profit-value">${money(potentialProfit)}</div>
-          <div class="smart-profit-meta">
-            No se suma a la ganancia hasta que el ítem desaparezca del reporte
-          </div>
+        <article class="earnings-kpi">
+          <span>Potencial</span>
+          <strong>${money(potential)}</strong>
+          <small>${totals.pending_count || 0} todavía en reporte</small>
         </article>
-      </div>
+      </section>
 
-      <div class="smart-profit-progress card">
-        <div class="smart-profit-progress-head">
+      <section class="card earnings-efficiency">
+        <div class="flex-between">
           <div>
-            <div class="smart-profit-label">Eficiencia de remoción</div>
-            <strong>${removalRate}%</strong>
+            <h3>Progreso de remociones</h3>
+            <p class="text-sm text-muted">
+              Solo las remociones ya detectadas entran en Ganancia confirmada.
+            </p>
           </div>
-          <div class="text-sm text-muted">
-            ${removed.length} removidos de ${allItems.length} ítems rastreados
-          </div>
+          <strong>${removalRate}%</strong>
         </div>
-        <div class="smart-profit-track">
-          <span style="width:${removalRate}%"></span>
-        </div>
-        <div class="smart-profit-progress-foot">
-          <span>Ganado: ${money(confirmedProfit)}</span>
-          <span>Oportunidad total: ${money(totalOpportunity)}</span>
-        </div>
-      </div>
+        <div class="earnings-progress"><span style="width:${removalRate}%"></span></div>
+        ${
+          reappeared
+            ? `<div class="earnings-reappeared-note">⚠️ ${reappeared} ítem(s) tienen historial de remoción pero volvieron a aparecer en un reporte posterior. El evento histórico se conserva para auditoría.</div>`
+            : ""
+        }
+      </section>
 
-      <div class="smart-profit-columns">
+      <div class="earnings-columns">
         <section class="card">
-          <div class="smart-profit-section-head">
+          <div class="flex-between" style="margin-bottom:12px">
             <div>
               <h3>Remociones detectadas</h3>
-              <p class="text-sm text-muted">
-                Solo aparecen aquí los ítems que dejaron de reportarse.
-              </p>
+              <p class="text-sm text-muted">Eventos permanentes, ordenados por fecha.</p>
             </div>
-            <span class="count-pill">${removed.length}</span>
           </div>
-
           ${
-            recentRemoved.length
-              ? `<div class="smart-removal-list">
-                  ${recentRemoved
-                    .map((it) => {
-                      const amount = removalValue(it, categories);
-                      const bureau = it.bureaus || "Buró no especificado";
-                      const account = it.account_number ? ` • ${escapeHtml(it.account_number)}` : "";
-                      return `
-                        <button class="smart-removal-row" data-client-id="${it.client_id}">
-                          <div class="smart-removal-icon">✓</div>
-                          <div class="smart-removal-main">
-                            <div class="smart-removal-title">
-                              ${escapeHtml(it.client_name || "Cliente")}
-                            </div>
-                            <div class="smart-removal-sub">
-                              ${escapeHtml(it.creditor_name || categoryName(categories, it.category))}
-                              ${account}
-                            </div>
-                            <div class="smart-removal-tags">
-                              <span>${escapeHtml(categoryName(categories, it.category))}</span>
-                              <span>${escapeHtml(bureau)}</span>
-                              <span>${dateLabel(it.updated_at || it.created_at)}</span>
-                            </div>
-                          </div>
-                          <div class="smart-removal-amount">
-                            +${money(amount)}
-                            <small>${it.billing_status === "pagado" ? "Cobrado" : "Por cobrar"}</small>
-                          </div>
-                        </button>
-                      `;
-                    })
-                    .join("")}
+            recent.length
+              ? `<div class="earnings-removal-list">
+                  ${recent.map((ev) => `
+                    <button class="earnings-removal-row" data-client="${ev.client_id}">
+                      <div>
+                        <strong>${escapeHtml(ev.creditor_name || "Ítem removido")}</strong>
+                        <span>${escapeHtml(ev.client_name || "")} · ${escapeHtml(ev.bureau || "Buró no indicado")}</span>
+                      </div>
+                      <div class="earnings-removal-value">
+                        <strong>${money(ev.amount)}</strong>
+                        <span>${dateLabel(ev.detected_at)} · ${eventLabel(ev)}</span>
+                      </div>
+                    </button>
+                  `).join("")}
                 </div>`
-              : `<div class="empty">
-                  <div class="mark">🔎</div>
-                  <h3>Todavía no hay remociones detectadas</h3>
-                  <p>
-                    Importa un reporte nuevo del cliente. CreditFlow lo comparará con el anterior
-                    y empezará a registrar automáticamente lo que haya desaparecido.
-                  </p>
-                </div>`
+              : `<div class="empty"><div class="mark">✓</div><h3>Aún no hay remociones históricas</h3><p>Cuando un reporte nuevo confirme una eliminación aparecerá aquí automáticamente.</p></div>`
           }
         </section>
 
         <section class="card">
-          <div class="smart-profit-section-head">
-            <div>
-              <h3>Ganancia por cliente</h3>
-              <p class="text-sm text-muted">
-                Solo dinero generado por remociones confirmadas.
-              </p>
-            </div>
+          <div style="margin-bottom:12px">
+            <h3>Ganancia por cliente</h3>
+            <p class="text-sm text-muted">Confirmada, cobrada y pendiente.</p>
           </div>
-
           ${
-            clientRows.length
-              ? `<div class="smart-client-list">
-                  ${clientRows
-                    .map(
-                      (c) => `
-                    <button class="smart-client-row" data-client-id="${c.client_id}">
+            clients?.length
+              ? `<div class="earnings-client-list">
+                  ${clients.map((c) => `
+                    <button class="earnings-client-row" data-client="${c.client_id}">
                       <div>
-                        <div class="row-name">${escapeHtml(c.client_name)}</div>
-                        <div class="row-sub">${c.removed_count} remoción(es) confirmada(s)</div>
+                        <strong>${escapeHtml(c.client_name)}</strong>
+                        <span>${c.real_count || 0} remoción(es) · ${c.pending_count || 0} potencial(es)</span>
                       </div>
-                      <div class="smart-client-money">
-                        <strong>${money(c.profit)}</strong>
-                        <span>${c.receivable ? `${money(c.receivable)} por cobrar` : "Todo cobrado"}</span>
+                      <div>
+                        <strong>${money(c.real_amount)}</strong>
+                        <span>${c.owed_amount ? `${money(c.owed_amount)} por cobrar` : "Todo cobrado"}</span>
                       </div>
-                    </button>`
-                    )
-                    .join("")}
+                    </button>
+                  `).join("")}
                 </div>`
-              : `<div class="empty">
-                  <div class="mark">💰</div>
-                  <h3>Sin ganancias confirmadas</h3>
-                  <p>La ganancia aparecerá sola cuando una colección desaparezca de un reporte nuevo.</p>
-                </div>`
+              : `<div class="empty text-sm">Sin ganancias todavía.</div>`
           }
         </section>
       </div>
 
-      <section class="card smart-profit-rates">
-        <div class="smart-profit-section-head">
+      <section class="card" style="margin-top:18px">
+        <div class="flex-between" style="margin-bottom:12px">
           <div>
-            <h3>Tarifas por remoción</h3>
+            <h3>Resumen por categoría</h3>
             <p class="text-sm text-muted">
-              Estas tarifas determinan cuánto suma CreditFlow cuando detecta una remoción.
+              “Real” usa la tarifa congelada al detectarse la remoción. “Potencial” usa la tarifa actual.
             </p>
           </div>
         </div>
-
-        <form id="smart-pricing-form" class="smart-rates-grid">
-          ${categories
-            .map(
-              (c) => `
-            <label class="smart-rate-field">
-              <span>${escapeHtml(c.label)}</span>
-              <div class="smart-rate-input">
-                <span>$</span>
-                <input
-                  type="number"
-                  name="fee_${c.category}"
-                  min="0"
-                  step="0.01"
-                  required
-                  value="${pricing[`fee_${c.category}`] ?? c.fee ?? 0}"
-                />
-              </div>
-            </label>`
-            )
-            .join("")}
-          <div class="smart-rate-actions">
-            <button class="btn btn-primary" type="submit">Guardar tarifas</button>
-          </div>
-        </form>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Categoría</th>
+                <th class="cell-num">Remociones</th>
+                <th class="cell-num">Ganancia real</th>
+                <th class="cell-num">Por cobrar</th>
+                <th class="cell-num">Potencial</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${categories
+                .filter((c) => c.real_count || c.pending_count)
+                .map((c) => `
+                  <tr>
+                    <td class="row-name">${escapeHtml(c.label || c.category)}</td>
+                    <td class="cell-num">${c.real_count || 0}</td>
+                    <td class="cell-num">${money(c.real_amount)}</td>
+                    <td class="cell-num">${money(c.owed_amount)}</td>
+                    <td class="cell-num">${money(c.pending_amount)}</td>
+                  </tr>
+                `)
+                .join("") || `<tr><td colspan="5" class="text-muted">Sin movimientos.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
       </section>
-
-      <div class="smart-profit-note">
-        <strong>Regla principal:</strong>
-        una colección que todavía aparece en el reporte nunca se suma como ganancia.
-        Solo se suma cuando CreditFlow la detecta como eliminada en una importación posterior.
-      </div>
     </div>
   `;
 
-  container.querySelectorAll("[data-client-id]").forEach((el) => {
+  container.querySelectorAll("[data-client]").forEach((el) => {
     el.addEventListener("click", () => {
-      const id = el.dataset.clientId;
-      if (id) window.__creditflowNavigate(`#/clientes/${id}`);
+      window.__creditflowNavigate(`#/clientes/${el.dataset.client}`);
     });
-  });
-
-  container.querySelector("#smart-pricing-form")?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const btn = e.currentTarget.querySelector('button[type="submit"]');
-    const old = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = "Guardando…";
-    try {
-      const fd = new FormData(e.currentTarget);
-      await api.put("/pricing", Object.fromEntries(fd.entries()));
-      btn.textContent = "Guardado ✓";
-      setTimeout(() => renderEarningsDashboard(container), 500);
-    } catch (err) {
-      btn.disabled = false;
-      btn.textContent = old;
-      alert(err.message || "No se pudieron guardar las tarifas.");
-    }
   });
 }
