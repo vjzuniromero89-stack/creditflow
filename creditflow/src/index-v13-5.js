@@ -1,5 +1,6 @@
-// CreditFlow v13.5.2 — Complete Negative Strategy
-// Includes settled/liquidated negative accounts in the same simple strategy flow.
+// CreditFlow v13.5.3 — Automatic Bureau Addressing
+// Round 1 goes to the CRA reporting each negative item.
+// Bureau name/address are resolved automatically from the report's bureau field.
 import v134 from "./index-v13-4.js";
 import baseWorker from "./index.js";
 import { createD1Shim } from "./db-shim.js";
@@ -8,6 +9,12 @@ const out=(x,s=200)=>new Response(JSON.stringify(x),{status:s,headers:{
   "content-type":"application/json; charset=utf-8","cache-control":"no-store"
 }});
 
+const BUREAUS={
+  experian:{name:"Experian",address:"Experian\nP.O. Box 4500\nAllen, TX 75013"},
+  transunion:{name:"TransUnion",address:"TransUnion Consumer Solutions\nP.O. Box 2000\nChester, PA 19016-2000"},
+  equifax:{name:"Equifax",address:"Equifax Information Services LLC\nP.O. Box 740256\nAtlanta, GA 30374"}
+};
+
 async function auth(req,env,ctx){
   const u=new URL(req.url);u.pathname="/api/auth/status";u.search="";
   const r=await baseWorker.fetch(new Request(u,{method:"GET",headers:req.headers}),env,ctx);
@@ -15,44 +22,47 @@ async function auth(req,env,ctx){
   try{return !!(await r.json()).authenticated}catch{return false}
 }
 
-function normCategory(v){
-  return String(v||"").trim().toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
-    .replace(/\s+/g,"_");
+function norm(v){
+  return String(v||"").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
 }
-
-function routeFor(item){
-  const c=normCategory(item.category);
-  if(["coleccion","collection","collections"].includes(c))
-    return {template_id:64,code:"ACE40",label:"Collection Challenge",recipient_type:"collector"};
-  if(["charge_off","chargeoff","charged_off"].includes(c))
-    return {template_id:67,code:"ACE61",label:"Charge-Off Reporting Challenge",recipient_type:"furnisher"};
-  if(["pago_tardio","late_payment","late","late_payments"].includes(c))
-    return {template_id:68,code:"ACE62",label:"Late Payment Reporting Challenge",recipient_type:"furnisher"};
-  if(["inquiry","inquiries","consulta","hard_inquiry"].includes(c))
-    return {template_id:69,code:"ACE63",label:"Inquiry Permissible-Purpose Challenge",recipient_type:"furnisher"};
-  if(["liquidada","liquidado","settled","settled_account"].includes(c))
-    return {template_id:70,code:"ACE64",label:"Settled Account Reporting Challenge",recipient_type:"furnisher"};
+function bureauFor(v){
+  const x=norm(v).replace(/[^a-z]/g,"");
+  if(x.includes("experian"))return BUREAUS.experian;
+  if(x.includes("transunion"))return BUREAUS.transunion;
+  if(x.includes("equifax"))return BUREAUS.equifax;
   return null;
 }
-
+function eligibleCategory(v){
+  const c=norm(v).replace(/\s+/g,"_");
+  return ["coleccion","collection","collections","charge_off","chargeoff","charged_off",
+    "pago_tardio","late_payment","late","late_payments","inquiry","inquiries","consulta",
+    "hard_inquiry","liquidada","liquidado","settled","settled_account"].includes(c);
+}
+function categoryLabel(v){
+  const c=norm(v).replace(/\s+/g,"_");
+  if(["coleccion","collection","collections"].includes(c))return "Collection";
+  if(["charge_off","chargeoff","charged_off"].includes(c))return "Charge-Off";
+  if(["pago_tardio","late_payment","late","late_payments"].includes(c))return "Late Payment";
+  if(["inquiry","inquiries","consulta","hard_inquiry"].includes(c))return "Inquiry";
+  if(["liquidada","liquidado","settled","settled_account"].includes(c))return "Settled Account";
+  return "Negative Account";
+}
 function renderTemplate(body,map){
   return String(body||"").replace(/\{\{([a-zA-Z0-9_]+)\}\}/g,(_,k)=>map[k]??"");
 }
-
-function mapFor(client,item,recipientName,recipientAddress){
+function mapFor(client,item,bureau){
   const cityStateZip=[client.city||"",[client.state||"",client.zip||""].filter(Boolean).join(" ")].filter(Boolean).join(", ");
-  const reason=[
-    `This request concerns the reporting shown for ${item.creditor_name||"the account"}.`,
+  const basis=[
+    `Category: ${categoryLabel(item.category)}.`,
+    `Creditor/furnisher: ${item.creditor_name||"not shown"}.`,
+    `Account/reference: ${item.account_number||"not shown"}.`,
     item.status_raw?`Reported status: ${item.status_raw}.`:"",
     item.balance?`Reported balance: ${item.balance}.`:"",
     item.past_due?`Reported past due: ${item.past_due}.`:"",
     item.date_reported?`Date reported: ${item.date_reported}.`:"",
     item.date_opened?`Date opened: ${item.date_opened}.`:"",
-    item.bureaus?`Bureau(s): ${item.bureaus}.`:"",
-    "Please review the account-level information and respond in writing with the results of the applicable investigation, validation, or reporting review."
+    `This item appears in the ${bureau.name} consumer report. Please conduct the applicable reinvestigation of the information being reported and provide the results in writing.`
   ].filter(Boolean).join(" ");
-
   return {
     fecha:new Date().toLocaleDateString("en-US"),
     cliente_nombre:client.full_name||"",
@@ -60,12 +70,70 @@ function mapFor(client,item,recipientName,recipientAddress){
     cliente_ciudad_estado_zip:cityStateZip,
     cliente_fecha_nacimiento:client.date_of_birth||"",
     cliente_id_last4:client.id_last4||"",
-    destinatario_nombre:recipientName||item.creditor_name||"",
-    destinatario_direccion:recipientAddress||item.creditor_address||"",
+    destinatario_nombre:bureau.name,
+    destinatario_direccion:bureau.address,
     acreedor_nombre:item.creditor_name||"",
     numero_cuenta:item.account_number||"",
-    motivo_disputa:reason
+    motivo_disputa:basis
   };
+}
+
+async function getContext(db,clientId){
+  const [client,{results:items=[]},tpl]=await Promise.all([
+    db.prepare(`SELECT * FROM clients WHERE id=?`).bind(clientId).first(),
+    db.prepare(`SELECT * FROM credit_items WHERE client_id=? AND COALESCE(removed_status,'') NOT IN ('removed','deleted','eliminado') ORDER BY id`).bind(clientId).all(),
+    db.prepare(`SELECT * FROM letter_templates WHERE id=61 AND is_active=1`).first()
+  ]);
+  return {client,items:items.filter(i=>eligibleCategory(i.category)),tpl};
+}
+
+async function normalizeLetters(db,clientId){
+  const {client,items,tpl}=await getContext(db,clientId);
+  if(!client)return {error:"Cliente no encontrado",status:404};
+  if(!tpl)return {error:"La plantilla CRA Round 1 no está disponible.",status:500};
+
+  let created=0,updated=0,unresolved=0;
+  for(const item of items){
+    const bureau=bureauFor(item.bureaus);
+    if(!bureau){unresolved++;continue}
+
+    const body=renderTemplate(tpl.body,mapFor(client,item,bureau));
+    const title=`Round 1 CRA Challenge — ${item.creditor_name||item.account_number||"Account"} — ${bureau.name}`;
+    const notes=`simple_strategy_v13_5:CRA_ROUND1:${categoryLabel(item.category)}:${bureau.name}`;
+
+    const existing=await db.prepare(`
+      SELECT * FROM letters
+      WHERE client_id=? AND credit_item_id=? AND notes LIKE 'simple_strategy_v13_5%'
+        AND status IN ('borrador','lista')
+      ORDER BY id DESC LIMIT 1
+    `).bind(clientId,item.id).first();
+
+    if(existing){
+      await db.prepare(`
+        UPDATE letters
+        SET template_id=61,title=?,recipient_name=?,recipient_address=?,body=?,status='borrador',
+            include_id_copy=?,include_address_proof=?,include_ssn_copy=?,notes=?,updated_at=NOW()
+        WHERE id=?
+      `).bind(
+        title,bureau.name,bureau.address,body,
+        tpl.include_id_copy||0,tpl.include_address_proof||0,tpl.include_ssn_copy||0,
+        notes,existing.id
+      ).run();
+      updated++;
+    }else{
+      await db.prepare(`
+        INSERT INTO letters(
+          client_id,template_id,credit_item_id,title,recipient_name,recipient_address,
+          round_number,body,status,include_id_copy,include_address_proof,include_ssn_copy,notes
+        ) VALUES(?,61,?,?,?,?,1,?,'borrador',?,?,?,?)
+      `).bind(
+        clientId,item.id,title,bureau.name,bureau.address,body,
+        tpl.include_id_copy||0,tpl.include_address_proof||0,tpl.include_ssn_copy||0,notes
+      ).run();
+      created++;
+    }
+  }
+  return {ok:true,created,updated,unresolved,total:items.length};
 }
 
 async function status(db,clientId){
@@ -73,7 +141,7 @@ async function status(db,clientId){
     db.prepare(`SELECT * FROM credit_items WHERE client_id=? AND COALESCE(removed_status,'') NOT IN ('removed','deleted','eliminado') ORDER BY id`).bind(clientId).all(),
     db.prepare(`SELECT * FROM letters WHERE client_id=? AND notes LIKE 'simple_strategy_v13_5%' ORDER BY id DESC`).bind(clientId).all()
   ]);
-  const eligible=items.filter(i=>routeFor(i));
+  const eligible=items.filter(i=>eligibleCategory(i.category));
   const ready=letters.filter(l=>l.status==="lista").length;
   const missingAddress=letters.filter(l=>!String(l.recipient_address||"").trim()).length;
   return {
@@ -88,60 +156,15 @@ async function status(db,clientId){
   };
 }
 
-async function startStrategy(db,clientId){
-  const client=await db.prepare(`SELECT * FROM clients WHERE id=?`).bind(clientId).first();
-  if(!client)return {error:"Cliente no encontrado",status:404};
-
-  const {results:items=[]}=await db.prepare(`
-    SELECT * FROM credit_items
-    WHERE client_id=? AND COALESCE(removed_status,'') NOT IN ('removed','deleted','eliminado')
-    ORDER BY id
-  `).bind(clientId).all();
-
-  let created=0,reused=0;
-  for(const item of items){
-    const route=routeFor(item); if(!route)continue;
-
-    const existing=await db.prepare(`
-      SELECT id FROM letters
-      WHERE client_id=? AND credit_item_id=? AND template_id=?
-        AND notes LIKE 'simple_strategy_v13_5%'
-        AND status IN ('borrador','lista','enviada','en_transito','entregada','respondida','completada')
-      LIMIT 1
-    `).bind(clientId,item.id,route.template_id).first();
-
-    if(existing){reused++;continue}
-
-    const tpl=await db.prepare(`SELECT * FROM letter_templates WHERE id=? AND is_active=1`).bind(route.template_id).first();
-    if(!tpl)continue;
-
-    const recipientName=item.creditor_name||tpl.recipient_hint||"";
-    const recipientAddress=item.creditor_address||"";
-    const letterBody=renderTemplate(tpl.body,mapFor(client,item,recipientName,recipientAddress));
-    const title=`${route.label} — ${item.creditor_name||item.account_number||"Account"}`;
-
-    await db.prepare(`
-      INSERT INTO letters(
-        client_id,template_id,credit_item_id,title,recipient_name,recipient_address,
-        round_number,body,status,include_id_copy,include_address_proof,include_ssn_copy,notes
-      ) VALUES(?,?,?,?,?,?,1,?,'borrador',?,?,?,?)
-    `).bind(
-      clientId,route.template_id,item.id,title,recipientName,recipientAddress,letterBody,
-      tpl.include_id_copy||0,tpl.include_address_proof||0,tpl.include_ssn_copy||0,
-      `simple_strategy_v13_5:${route.code}:${route.recipient_type}`
-    ).run();
-    created++;
-  }
-
-  let rc=await db.prepare(`SELECT * FROM repair_cases WHERE client_id=? LIMIT 1`).bind(clientId).first();
+async function ensureRepairCase(db,clientId){
+  const rc=await db.prepare(`SELECT * FROM repair_cases WHERE client_id=? LIMIT 1`).bind(clientId).first();
   if(!rc){
-    rc=await db.prepare(`
+    await db.prepare(`
       INSERT INTO repair_cases(
         client_id,status,automation_mode,current_stage,next_action,approval_required,
         approved_for_auto_send,certified_mail_status,started_at
       ) VALUES(?,'active','automatic','approval_required','Revisar y enviar cartas',TRUE,FALSE,'not_started',NOW())
-      RETURNING *
-    `).bind(clientId).first();
+    `).bind(clientId).run();
   }else{
     await db.prepare(`
       UPDATE repair_cases
@@ -151,55 +174,43 @@ async function startStrategy(db,clientId){
       WHERE client_id=?
     `).bind(clientId).run();
   }
+}
 
-  return {ok:true,created,reused,...await status(db,clientId)};
+async function startStrategy(db,clientId){
+  const r=await normalizeLetters(db,clientId);
+  if(r.error)return r;
+  await ensureRepairCase(db,clientId);
+  return {...r,...await status(db,clientId)};
 }
 
 async function approveAll(db,clientId){
+  // Always normalize recipient names/addresses immediately before approval.
+  const normalized=await normalizeLetters(db,clientId);
+  if(normalized.error)return normalized;
+
   const st=await status(db,clientId);
-  if(!st.complete){
-    return {error:`La estrategia todavía está incompleta: faltan ${st.remaining} carta(s).`,status:409,...st};
-  }
+  if(!st.complete)return {error:`La estrategia está incompleta: faltan ${st.remaining} carta(s).`,status:409,...st};
+  if(st.missing_address>0)return {error:`Faltan ${st.missing_address} dirección(es) postales.`,status:409,...st};
 
   const {results:letters=[]}=await db.prepare(`
     SELECT * FROM letters
     WHERE client_id=? AND notes LIKE 'simple_strategy_v13_5%' AND status='borrador'
   `).bind(clientId).all();
 
-  let ready=0,missingAddress=0;
+  let ready=0;
   for(const l of letters){
-    if(String(l.recipient_address||"").trim()){
-      await db.prepare(`UPDATE letters SET status='lista',updated_at=NOW() WHERE id=?`).bind(l.id).run();
-      ready++;
-    }else{
-      missingAddress++;
-    }
+    await db.prepare(`UPDATE letters SET status='lista',updated_at=NOW() WHERE id=?`).bind(l.id).run();
+    ready++;
   }
 
-  if(ready>0){
-    await db.prepare(`
-      UPDATE repair_cases
-      SET current_stage='mailing_ready',next_action='Abrir Envíos certificados',
-          approval_required=FALSE,approved_for_auto_send=TRUE,updated_at=NOW()
-      WHERE client_id=?
-    `).bind(clientId).run();
-  }else{
-    await db.prepare(`
-      UPDATE repair_cases
-      SET current_stage='approval_required',
-          next_action='Completar direcciones postales de destinatarios',
-          approval_required=TRUE,approved_for_auto_send=FALSE,updated_at=NOW()
-      WHERE client_id=?
-    `).bind(clientId).run();
-  }
+  await db.prepare(`
+    UPDATE repair_cases
+    SET current_stage='mailing_ready',next_action='Abrir Envíos certificados',
+        approval_required=FALSE,approved_for_auto_send=TRUE,updated_at=NOW()
+    WHERE client_id=?
+  `).bind(clientId).run();
 
-  return {
-    ok:true,
-    ready,
-    missing_address:missingAddress,
-    needs_addresses:ready===0 && missingAddress>0,
-    ...await status(db,clientId)
-  };
+  return {ok:true,ready,normalized,...await status(db,clientId)};
 }
 
 export default{
