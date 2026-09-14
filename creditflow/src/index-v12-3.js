@@ -83,7 +83,7 @@ async function enhancedBuild(db,clientId){
   try{removals=(await db.prepare(`SELECT * FROM removal_events WHERE client_id=?`).bind(clientId).all()).results||[]}catch{}
   try{checks=(await db.prepare(`SELECT * FROM collector_compliance_checks WHERE client_id=? ORDER BY updated_at DESC,id DESC`).bind(clientId).all()).results||[]}catch{}
 
-  await db.prepare(`DELETE FROM strategy_actions WHERE client_id=? AND status IN ('planned','blocked')`).bind(clientId).run();
+  await db.prepare(`DELETE FROM strategy_actions WHERE client_id=? AND status IN ('planned','blocked','completed','review')`).bind(clientId).run();
 
   const groups=new Map();
   for(const item of items||[]){
@@ -99,11 +99,129 @@ async function enhancedBuild(db,clientId){
     actions.push([
       repairCase.id,clientId,item.id,type,target,targetName,bureau,code,status,priority,reason
     ]);
-    status==="blocked"?blocked++:planned++;
+    if(status==="blocked")blocked++;
+    else if(status==="planned")planned++;
   }
 
   for(const group of groups.values()){
     const findings=compareGroup(group);
+    const primary=group[0];
+    const primaryAssessment=(assessments||[]).find(x=>String(x.credit_item_id)===String(primary.id));
+    const automaticNoSignal=Boolean(
+      primaryAssessment?.auto_ready &&
+      !primaryAssessment?.human_verified &&
+      primaryAssessment?.accuracy_status==="unknown" &&
+      primaryAssessment?.issue_type==="unknown" &&
+      findings.length===0
+    );
+
+    // v12.8: interpret a completed automatic audit instead of turning "unknown/no mismatch"
+    // into 21 manual strategy_review blocks.
+    if(automaticNoSignal){
+      const cat=norm(primary.category);
+
+      if(cat.includes("pago_tardio") || cat.includes("late")){
+        // Accurate/consistent late-payment data has no factual CRA dispute basis.
+        // Goodwill is a discretionary, non-dispute route. One letter per account group.
+        pushAction(primary,{
+          type:"goodwill",
+          target:"furnisher",
+          code:"40",
+          targetName:primary.creditor_name||null,
+          status:"planned",
+          priority:35,
+          reason:"Auto Audit no detectó una inconsistencia factual entre burós. Se recomienda una solicitud goodwill discrecional; no es una disputa de exactitud."
+        });
+        for(const extra of group.slice(1)){
+          pushAction(extra,{
+            type:"grouped_with_primary",
+            target:"internal",
+            code:null,
+            status:"completed",
+            priority:95,
+            reason:"Este registro de buró forma parte de la misma cuenta. La estrategia se consolidó en una sola acción goodwill para evitar cartas duplicadas."
+          });
+        }
+        continue;
+      }
+
+      if(cat.includes("coleccion") || cat.includes("collection")){
+        const check=complianceFor(primary,checks);
+        if(check?.human_verified && check.license_required_status==="required" &&
+           ["inactive","not_found"].includes(check.license_status)){
+          pushAction(primary,{
+            type:"collector_compliance_review",
+            target:"internal",
+            code:null,
+            status:"review",
+            priority:20,
+            reason:`Auto Audit no encontró una inconsistencia CRA, pero existe un hallazgo regulatorio confirmado (${check.license_status}). Revisar ese hallazgo por separado antes de enviar una carta.`
+          });
+        }else{
+          pushAction(primary,{
+            type:"no_factual_dispute",
+            target:"internal",
+            code:null,
+            status:"completed",
+            priority:90,
+            reason:"Auto Audit comparó los burós y no detectó una inconsistencia material. CreditFlow no generará una disputa CRA sin una base factual."
+          });
+        }
+        for(const extra of group.slice(1)){
+          pushAction(extra,{
+            type:"grouped_with_primary",
+            target:"internal",
+            code:null,
+            status:"completed",
+            priority:95,
+            reason:"Registro consolidado con la misma cuenta; no requiere una segunda acción idéntica."
+          });
+        }
+        continue;
+      }
+
+      if(cat.includes("charge_off") || cat.includes("charge off") || cat.includes("liquidada") || cat.includes("settled")){
+        pushAction(primary,{
+          type:"no_factual_dispute",
+          target:"internal",
+          code:null,
+          status:"completed",
+          priority:90,
+          reason:"La auditoría automática no detectó una inconsistencia material entre burós. No se crea una disputa solo porque la cuenta sea negativa, charge-off o settled."
+        });
+        for(const extra of group.slice(1)){
+          pushAction(extra,{
+            type:"grouped_with_primary",
+            target:"internal",
+            code:null,
+            status:"completed",
+            priority:95,
+            reason:"Registro consolidado con la misma cuenta; no requiere una segunda acción."
+          });
+        }
+        continue;
+      }
+
+      pushAction(primary,{
+        type:"no_factual_dispute",
+        target:"internal",
+        code:null,
+        status:"completed",
+        priority:90,
+        reason:"Auto Audit no encontró una base factual suficiente para una disputa automática."
+      });
+      for(const extra of group.slice(1)){
+        pushAction(extra,{
+          type:"grouped_with_primary",
+          target:"internal",
+          code:null,
+          status:"completed",
+          priority:95,
+          reason:"Registro consolidado con la misma cuenta."
+        });
+      }
+      continue;
+    }
 
     for(const item of group){
       const a=(assessments||[]).find(x=>String(x.credit_item_id)===String(item.id));
@@ -256,16 +374,16 @@ async function enhancedBuild(db,clientId){
     INSERT INTO strategy_runs (repair_case_id,client_id,status,summary_json)
     VALUES (?,?,'completed',?) RETURNING *
   `).bind(repairCase.id,clientId,JSON.stringify({
-    planned,blocked,total_items:(items||[]).length,actions:actions.length,engine:"v12.5.2"
+    planned,blocked,total_items:(items||[]).length,actions:actions.length,engine:"v12.8"
   })).first();
 
   await db.prepare(`
     UPDATE repair_cases SET current_stage='strategy_ready',
       next_action=?,last_strategy_at=NOW(),updated_at=NOW()
     WHERE id=?
-  `).bind(planned?`Revisar ${planned} acción(es) planificada(s) por Strategy Engine v12.5.2`:"Completar revisiones pendientes",repairCase.id).run();
+  `).bind(planned?`Revisar ${planned} acción(es) planificada(s) por Strategy Engine v12.8`:"Completar revisiones pendientes",repairCase.id).run();
 
-  return {run,planned,blocked,actions:actions.length,engine:"v12.5.2"};
+  return {run,planned,blocked,actions:actions.length,engine:"v12.8"};
 }
 
 export default{async fetch(request,env,ctx){
@@ -278,7 +396,7 @@ export default{async fetch(request,env,ctx){
       if(r.error)return out({error:r.error,...r},r.status||400);
       return out(r);
     }catch(e){
-      return out({error:"Strategy Engine v12.5.2 falló",detail:String(e?.message||e)},500);
+      return out({error:"Strategy Engine v12.8 falló",detail:String(e?.message||e)},500);
     }
   }
   return v12.fetch(request,env,ctx);
