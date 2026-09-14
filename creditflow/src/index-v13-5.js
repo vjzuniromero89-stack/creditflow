@@ -1,4 +1,4 @@
-// CreditFlow v13.5.6 — Grouped Certified Mail Packages
+// CreditFlow v13.6 — Dual Track Strategy: CRA + Creditor/Collector
 // Round 1 goes to the CRA reporting each negative item.
 // Bureau name/address are resolved automatically from the report's bureau field.
 import v134 from "./index-v13-4.js";
@@ -48,7 +48,9 @@ function categoryLabel(v){
   return "Negative Account";
 }
 function renderTemplate(body,map){
-  return String(body||"").replace(/\{\{([a-zA-Z0-9_]+)\}\}/g,(_,k)=>map[k]??"");
+  return String(body||"")
+    .replace(/\\n/g,"\n")
+    .replace(/\{\{([a-zA-Z0-9_]+)\}\}/g,(_,k)=>map[k]??"");
 }
 function mapFor(client,item,bureau){
   const cityStateZip=[client.city||"",[client.state||"",client.zip||""].filter(Boolean).join(" ")].filter(Boolean).join(", ");
@@ -155,6 +157,129 @@ async function getContext(db,clientId){
   return {client,items:items.filter(i=>eligibleCategory(i.category)),tpl};
 }
 
+
+function directRouteFor(item){
+  const c=norm(item.category).replace(/\s+/g,"_");
+  if(["coleccion","collection","collections"].includes(c))
+    return {template_id:64,code:"ACE40",label:"Collector Validation / Information Challenge",recipient_type:"collector"};
+  if(["charge_off","chargeoff","charged_off"].includes(c))
+    return {template_id:67,code:"ACE61",label:"Charge-Off Reporting Review",recipient_type:"creditor"};
+  if(["pago_tardio","late_payment","late","late_payments"].includes(c))
+    return {template_id:68,code:"ACE62",label:"Late Payment Reporting Review",recipient_type:"creditor"};
+  if(["liquidada","liquidado","settled","settled_account"].includes(c))
+    return {template_id:70,code:"ACE64",label:"Settled Account Reporting Review",recipient_type:"creditor"};
+  if(["inquiry","inquiries","consulta","hard_inquiry"].includes(c))
+    return {template_id:69,code:"ACE63",label:"Permissible-Purpose Information Request",recipient_type:"creditor"};
+  return null;
+}
+function normalizedPostal(v){
+  return String(v||"").replace(/\\n/g,"\n").replace(/\r/g,"").trim();
+}
+function directAccountKey(item){
+  return `${entityKey(item.creditor_name)}|${String(item.account_number||"").trim().toLowerCase()}`;
+}
+function directMapFor(client,item,recipient){
+  const cityStateZip=[client.city||"",[client.state||"",client.zip||""].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  const reason=[
+    `This request concerns the reporting for ${item.creditor_name||"the account"}.`,
+    item.status_raw?`Reported status: ${item.status_raw}.`:"",
+    item.balance?`Reported balance: ${item.balance}.`:"",
+    item.past_due?`Reported past due: ${item.past_due}.`:"",
+    item.date_reported?`Date reported: ${item.date_reported}.`:"",
+    item.date_opened?`Date opened: ${item.date_opened}.`:"",
+    `The account is appearing on the consumer report. Please review the specific reporting above and provide the results and any responsive account information in writing.`
+  ].filter(Boolean).join(" ");
+  return {
+    fecha:new Date().toLocaleDateString("en-US"),
+    cliente_nombre:client.full_name||"",
+    cliente_direccion:client.address||"",
+    cliente_ciudad_estado_zip:cityStateZip,
+    cliente_fecha_nacimiento:client.date_of_birth||"",
+    cliente_id_last4:client.id_last4||"",
+    destinatario_nombre:recipient.name,
+    destinatario_direccion:recipient.address,
+    acreedor_nombre:item.creditor_name||"",
+    numero_cuenta:item.account_number||"",
+    motivo_disputa:reason
+  };
+}
+async function ensureDirectLetters(db,client,items){
+  const unique=new Map();
+  for(const item of items){
+    const route=directRouteFor(item);
+    if(!route)continue;
+    const key=directAccountKey(item);
+    if(!unique.has(key))unique.set(key,{item,route,key});
+  }
+
+  let created=0,updated=0,unresolved=0;
+  const details=[];
+  for(const entry of unique.values()){
+    const {item,route,key}=entry;
+    const entity=await resolveCreditorCollector(db,item.creditor_name);
+    if(!entity){
+      unresolved++;
+      details.push({account_key:key,creditor:item.creditor_name,resolved:false});
+      continue;
+    }
+    const recipientName=String(entity.mailing_name||entity.canonical_name||item.creditor_name||"")
+      .replace(/\\n/g," ").replace(/\s+/g," ").trim();
+    const recipientAddress=normalizedPostal(entity.mailing_address||item.creditor_address);
+    if(!recipientAddress){
+      unresolved++;
+      details.push({account_key:key,creditor:item.creditor_name,resolved:false,reason:"missing_address"});
+      continue;
+    }
+
+    const tpl=await db.prepare(`SELECT * FROM letter_templates WHERE id=? AND is_active=1`).bind(route.template_id).first();
+    if(!tpl){
+      unresolved++;
+      details.push({account_key:key,creditor:item.creditor_name,resolved:false,reason:"missing_template"});
+      continue;
+    }
+
+    const body=renderTemplate(tpl.body,directMapFor(client,item,{name:recipientName,address:recipientAddress}));
+    const title=`${route.label} — ${item.creditor_name||item.account_number||"Account"}`;
+    const note=`simple_strategy_v13_5:DIRECT:${route.code}:${key}`;
+
+    const existing=await db.prepare(`
+      SELECT * FROM letters
+      WHERE client_id=? AND notes=?
+        AND status IN ('borrador','lista','enviada','en_transito','entregada','respondida','completada')
+      ORDER BY id DESC LIMIT 1
+    `).bind(client.id,note).first();
+
+    if(existing){
+      if(["borrador","lista"].includes(existing.status)){
+        await db.prepare(`
+          UPDATE letters
+          SET template_id=?,credit_item_id=?,title=?,recipient_name=?,recipient_address=?,
+              body=?,notes=?,updated_at=NOW()
+          WHERE id=?
+        `).bind(route.template_id,item.id,title,recipientName,recipientAddress,body,note,existing.id).run();
+        updated++;
+      }
+    }else{
+      await db.prepare(`
+        INSERT INTO letters(
+          client_id,template_id,credit_item_id,title,recipient_name,recipient_address,
+          round_number,body,status,include_id_copy,include_address_proof,include_ssn_copy,notes
+        ) VALUES(?,?,?,?,?,?,1,?,'borrador',?,?,?,?)
+      `).bind(
+        client.id,route.template_id,item.id,title,recipientName,recipientAddress,body,
+        tpl.include_id_copy||0,tpl.include_address_proof||0,tpl.include_ssn_copy||0,note
+      ).run();
+      created++;
+    }
+    details.push({
+      account_key:key,creditor:item.creditor_name,resolved:true,
+      recipient_name:recipientName,recipient_address:recipientAddress,
+      category:item.category
+    });
+  }
+  return {expected:unique.size,created,updated,unresolved,details};
+}
+
 async function normalizeLetters(db,clientId){
   const {client,items,tpl}=await getContext(db,clientId);
   if(!client)return {error:"Cliente no encontrado",status:404};
@@ -172,7 +297,7 @@ async function normalizeLetters(db,clientId){
 
     const existing=await db.prepare(`
       SELECT * FROM letters
-      WHERE client_id=? AND credit_item_id=? AND notes LIKE 'simple_strategy_v13_5%'
+      WHERE client_id=? AND credit_item_id=? AND notes LIKE 'simple_strategy_v13_5:CRA_ROUND1%'
         AND status IN ('borrador','lista')
       ORDER BY id DESC LIMIT 1
     `).bind(clientId,item.id).first();
@@ -202,35 +327,53 @@ async function normalizeLetters(db,clientId){
       created++;
     }
   }
+  const direct=await ensureDirectLetters(db,client,items);
   return {
     ok:true,created,updated,unresolved,total:items.length,
     entities_resolved:entityResolution.resolved,
     entities_unresolved:entityResolution.unresolved,
-    entity_resolution:entityResolution.entities
+    entity_resolution:entityResolution.entities,
+    direct
   };
 }
 
 async function status(db,clientId){
   const [{results:items=[]},{results:letters=[]}]=await Promise.all([
     db.prepare(`SELECT * FROM credit_items WHERE client_id=? AND COALESCE(removed_status,'') NOT IN ('removed','deleted','eliminado') ORDER BY id`).bind(clientId).all(),
-    db.prepare(`SELECT * FROM letters WHERE client_id=? AND notes LIKE 'simple_strategy_v13_5%' ORDER BY id DESC`).bind(clientId).all()
+    db.prepare(`SELECT * FROM letters WHERE client_id=? AND notes LIKE 'simple_strategy_v13_5:%' ORDER BY id DESC`).bind(clientId).all()
   ]);
   const eligible=items.filter(i=>eligibleCategory(i.category));
-  let entitiesResolved=0,entitiesUnresolved=0;
+
+  const uniqueDirect=new Map();
   for(const item of eligible){
+    if(directRouteFor(item))uniqueDirect.set(directAccountKey(item),item);
+  }
+
+  let entitiesResolved=0,entitiesUnresolved=0;
+  for(const item of uniqueDirect.values()){
     if(await resolveCreditorCollector(db,item.creditor_name))entitiesResolved++;
     else entitiesUnresolved++;
   }
-  const ready=letters.filter(l=>l.status==="lista").length;
-  const missingAddress=letters.filter(l=>!String(l.recipient_address||"").trim()).length;
+
+  const craLetters=letters.filter(l=>String(l.notes||"").startsWith("simple_strategy_v13_5:CRA_ROUND1"));
+  const directLetters=letters.filter(l=>String(l.notes||"").startsWith("simple_strategy_v13_5:DIRECT:"));
+  const expectedCra=eligible.length;
+  const expectedDirect=uniqueDirect.size;
+  const expectedTotal=expectedCra+expectedDirect;
+
   return {
     negatives:eligible.length,
+    cra_expected:expectedCra,
+    cra_generated:craLetters.length,
+    direct_expected:expectedDirect,
+    direct_generated:directLetters.length,
+    expected_total:expectedTotal,
     generated:letters.length,
-    remaining:Math.max(0,eligible.length-letters.length),
-    complete:eligible.length>0 && letters.length>=eligible.length,
-    ready,
+    remaining:Math.max(0,expectedTotal-letters.length),
+    complete:expectedTotal>0 && letters.length>=expectedTotal,
+    ready:letters.filter(l=>l.status==="lista").length,
     drafts:letters.filter(l=>l.status==="borrador").length,
-    missing_address:missingAddress,
+    missing_address:letters.filter(l=>!String(l.recipient_address||"").trim()).length,
     entities_resolved:entitiesResolved,
     entities_unresolved:entitiesUnresolved,
     letters
