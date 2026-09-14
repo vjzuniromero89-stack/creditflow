@@ -1,4 +1,4 @@
-// CreditFlow v13.5.3 — Automatic Bureau Addressing
+// CreditFlow v13.5.5 — Bulk Approval Hotfix
 // Round 1 goes to the CRA reporting each negative item.
 // Bureau name/address are resolved automatically from the report's bureau field.
 import v134 from "./index-v13-4.js";
@@ -265,33 +265,67 @@ async function startStrategy(db,clientId){
 }
 
 async function approveAll(db,clientId){
-  // Always normalize recipient names/addresses immediately before approval.
-  const normalized=await normalizeLetters(db,clientId);
-  if(normalized.error)return normalized;
+  // v13.5.5 HOTFIX:
+  // Approval must be lightweight. v13.5.4 re-ran full normalization + entity
+  // resolution during approval, producing dozens of Supabase subrequests.
+  // By this point the 21 draft letters already contain their bureau addresses.
+  const summary=await db.prepare(`
+    SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE status='borrador')::int AS drafts,
+      COUNT(*) FILTER (WHERE COALESCE(TRIM(recipient_address),'')='')::int AS missing_address
+    FROM letters
+    WHERE client_id=? AND notes LIKE 'simple_strategy_v13_5%'
+  `).bind(clientId).first();
 
-  const st=await status(db,clientId);
-  if(!st.complete)return {error:`La estrategia está incompleta: faltan ${st.remaining} carta(s).`,status:409,...st};
-  if(st.missing_address>0)return {error:`Faltan ${st.missing_address} dirección(es) postales.`,status:409,...st};
+  const total=Number(summary?.total||0);
+  const drafts=Number(summary?.drafts||0);
+  const missing=Number(summary?.missing_address||0);
 
-  const {results:letters=[]}=await db.prepare(`
-    SELECT * FROM letters
-    WHERE client_id=? AND notes LIKE 'simple_strategy_v13_5%' AND status='borrador'
-  `).bind(clientId).all();
+  if(total===0)
+    return {error:"No hay cartas de estrategia para aprobar.",status:409};
+  if(missing>0)
+    return {error:`Faltan ${missing} dirección(es) postales.`,status:409,missing_address:missing};
 
-  let ready=0;
-  for(const l of letters){
-    await db.prepare(`UPDATE letters SET status='lista',updated_at=NOW() WHERE id=?`).bind(l.id).run();
-    ready++;
-  }
+  // One bulk DB operation instead of one UPDATE per letter.
+  await db.prepare(`
+    UPDATE letters
+    SET status='lista',updated_at=NOW()
+    WHERE client_id=?
+      AND notes LIKE 'simple_strategy_v13_5%'
+      AND status='borrador'
+      AND COALESCE(TRIM(recipient_address),'')<>''
+  `).bind(clientId).run();
 
   await db.prepare(`
     UPDATE repair_cases
-    SET current_stage='mailing_ready',next_action='Abrir Envíos certificados',
-        approval_required=FALSE,approved_for_auto_send=TRUE,updated_at=NOW()
+    SET current_stage='mailing_ready',
+        next_action='Abrir Envíos certificados',
+        approval_required=FALSE,
+        approved_for_auto_send=TRUE,
+        certified_mail_status='ready',
+        updated_at=NOW()
     WHERE client_id=?
   `).bind(clientId).run();
 
-  return {ok:true,ready,normalized,...await status(db,clientId)};
+  const finalCounts=await db.prepare(`
+    SELECT
+      COUNT(*)::int AS generated,
+      COUNT(*) FILTER (WHERE status='lista')::int AS ready,
+      COUNT(*) FILTER (WHERE status='borrador')::int AS drafts,
+      COUNT(*) FILTER (WHERE COALESCE(TRIM(recipient_address),'')='')::int AS missing_address
+    FROM letters
+    WHERE client_id=? AND notes LIKE 'simple_strategy_v13_5%'
+  `).bind(clientId).first();
+
+  return {
+    ok:true,
+    approved:drafts,
+    generated:Number(finalCounts?.generated||total),
+    ready:Number(finalCounts?.ready||0),
+    drafts:Number(finalCounts?.drafts||0),
+    missing_address:Number(finalCounts?.missing_address||0)
+  };
 }
 
 export default{
