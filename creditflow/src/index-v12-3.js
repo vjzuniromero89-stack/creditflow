@@ -73,11 +73,11 @@ async function enhancedBuild(db,clientId){
 
   // v12.4.1 guard: Strategy must never be built before the real audit is complete.
   const activeItems=(items||[]).filter(x=>x.removed_status!=="eliminado");
-  const verifiedIds=new Set((assessments||[]).filter(a=>a.human_verified).map(a=>String(a.credit_item_id)));
+  const verifiedIds=new Set((assessments||[]).filter(a=>a.human_verified||a.auto_ready).map(a=>String(a.credit_item_id)));
   const audited=activeItems.filter(i=>verifiedIds.has(String(i.id))).length;
   if(activeItems.length>0 && audited<activeItems.length){
     return {
-      error:`Auditoría incompleta: ${audited} de ${activeItems.length} ítems revisados. Completa la Auditoría antes de construir la estrategia.`,
+      error:`Auditoría incompleta: ${audited} de ${activeItems.length} ítems revisados por humano o sistema. Completa o automatiza la Auditoría antes de construir la estrategia.`,
       status:409,
       audit_required:true,
       audited,
@@ -132,7 +132,7 @@ async function enhancedBuild(db,clientId){
         continue;
       }
 
-      if(!a || !a.human_verified){
+      if(!a || !(a.human_verified||a.auto_ready)){
         await insertAction(item,{type:"assessment_required",target:"internal",code:null,status:"blocked",priority:90,
           reason:"Falta diagnóstico humano confirmado."});
         continue;
