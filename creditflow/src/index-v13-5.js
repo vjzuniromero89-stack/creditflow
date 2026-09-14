@@ -141,7 +141,7 @@ async function startStrategy(db,clientId){
       UPDATE repair_cases
       SET status='active',automation_mode='automatic',current_stage='approval_required',
           next_action='Revisar y enviar cartas',approval_required=TRUE,
-          approved_for_auto_send=FALSE,last_transition_at=NOW(),updated_at=NOW()
+          approved_for_auto_send=FALSE,updated_at=NOW()
       WHERE client_id=?
     `).bind(clientId).run();
   }
@@ -165,14 +165,30 @@ async function approveAll(db,clientId){
     }
   }
 
-  await db.prepare(`
-    UPDATE repair_cases
-    SET current_stage='mailing_ready',next_action='Abrir Envíos certificados',
-        approval_required=FALSE,approved_for_auto_send=TRUE,last_transition_at=NOW(),updated_at=NOW()
-    WHERE client_id=?
-  `).bind(clientId).run();
+  if(ready>0){
+    await db.prepare(`
+      UPDATE repair_cases
+      SET current_stage='mailing_ready',next_action='Abrir Envíos certificados',
+          approval_required=FALSE,approved_for_auto_send=TRUE,updated_at=NOW()
+      WHERE client_id=?
+    `).bind(clientId).run();
+  }else{
+    await db.prepare(`
+      UPDATE repair_cases
+      SET current_stage='approval_required',
+          next_action='Completar direcciones postales de destinatarios',
+          approval_required=TRUE,approved_for_auto_send=FALSE,updated_at=NOW()
+      WHERE client_id=?
+    `).bind(clientId).run();
+  }
 
-  return {ok:true,ready,missing_address:missingAddress,...await status(db,clientId)};
+  return {
+    ok:true,
+    ready,
+    missing_address:missingAddress,
+    needs_addresses:ready===0 && missingAddress>0,
+    ...await status(db,clientId)
+  };
 }
 
 export default{
