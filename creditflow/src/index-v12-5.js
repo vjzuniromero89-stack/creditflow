@@ -119,26 +119,22 @@ async function prepare(env,clientId){
  }
 
  if(!rows.length){
-   return {ok:true,engine:"v12.5.3",processed:0,skippedHuman,message:"No había cuentas pendientes de auditoría automática."};
+   return {ok:true,engine:"v12.5.4",processed:0,skippedHuman,message:"No había cuentas pendientes de auditoría automática."};
  }
 
- const placeholders=rows.map(()=>"(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())").join(",");
+ const placeholders=rows.map(
+   ()=>"(?,?,?,?,?,FALSE,FALSE,?,?,?,?, '',FALSE,TRUE,TRUE,'creditflow_auto_v12_5_4',?,NOW())"
+ ).join(",");
  const params=[];
  for(const r of rows){
+   // Bind only text/numeric values.
+   // IMPORTANT: exec_sql converts JSON booleans to 1/0, which PostgreSQL
+   // does not accept for BOOLEAN columns. Boolean values stay as SQL literals.
    params.push(
      r[0],r[1],r[2],r[3],r[4],
-     false,false,r[5],r[6],r[7],r[8],
-     "",false,true,true,"creditflow_auto_v12_5_3",r[9]
+     r[5],r[6],r[7],r[8],r[9]
    );
  }
-
- // v12.5.3: keep human-reviewed assessments, replace only system-generated/non-human rows.
- // Two simple SQL operations are more reliable through the Supabase exec_sql RPC
- // than a writable CTE with UPDATE + INSERT.
- await db.prepare(`
-   DELETE FROM dispute_assessments
-   WHERE client_id=? AND COALESCE(human_verified,FALSE)=FALSE
- `).bind(clientId).run();
 
  const insertSql=`
    INSERT INTO dispute_assessments(
@@ -147,11 +143,26 @@ async function prepare(env,clientId){
      evidence_notes,desired_resolution,recommended_route,human_verified,
      auto_assessed,auto_ready,assessment_source,auto_findings_json,auto_assessed_at
    ) VALUES ${placeholders}
+   ON CONFLICT (client_id,credit_item_id) DO UPDATE SET
+     issue_type=EXCLUDED.issue_type,
+     accuracy_status=EXCLUDED.accuracy_status,
+     evidence_status=EXCLUDED.evidence_status,
+     confidence=EXCLUDED.confidence,
+     dispute_basis=EXCLUDED.dispute_basis,
+     evidence_notes=EXCLUDED.evidence_notes,
+     desired_resolution=EXCLUDED.desired_resolution,
+     auto_assessed=TRUE,
+     auto_ready=TRUE,
+     assessment_source='creditflow_auto_v12_5_4',
+     auto_findings_json=EXCLUDED.auto_findings_json,
+     auto_assessed_at=NOW(),
+     updated_at=NOW()
+   WHERE COALESCE(dispute_assessments.human_verified,FALSE)=FALSE
  `;
  await db.prepare(insertSql).bind(params).run();
 
  return {
-   ok:true,engine:"v12.5.3",processed:rows.length,skippedHuman,
+   ok:true,engine:"v12.5.4",processed:rows.length,skippedHuman,
    message:"Auditoría automática completada. Strategy Engine puede ejecutarse en el siguiente paso."
  };
 }
@@ -162,7 +173,7 @@ export default{async fetch(request,env,ctx){
  if(m==="POST"&&match){
    if(!(await auth(request,env,ctx)))return out({error:"No autorizado"},401);
    try{return out(await prepare(env,Number(match[1])))}
-   catch(e){return out({error:"Auto Audit Engine v12.5.3 falló",detail:String(e?.message||e)},500)}
+   catch(e){return out({error:"Auto Audit Engine v12.5.4 falló",detail:String(e?.message||e)},500)}
  }
  return v123.fetch(request,env,ctx);
 }};
