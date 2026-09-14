@@ -95,19 +95,52 @@ export async function renderRepairWorkflowV8(container,clientId,opts={}){
      </select>
    </div>`).join("");
  const identityPanel=identityActive?`
-   <section class="cf115-identity-review">
-     <div class="cf115-title"><div><strong>Revisión de información personal</strong><span>Verifica los datos antes de habilitar la auditoría.</span></div><span class="cf115-review-badge">REVISIÓN REQUERIDA</span></div>
-     <div class="cf115-person-grid">
-       <div><small>Nombre legal</small><strong>${escapeHtml(client.full_name||client.name||"No registrado")}</strong></div>
-       <div><small>Dirección actual del expediente</small><strong>${escapeHtml(currentAddress)}</strong></div>
-       <div><small>Fecha de nacimiento</small><strong>${escapeHtml(dob)}</strong></div>
-       <div><small>Identificación</small><strong>${pf.checks?.find(x=>x.key==="id")?.detail?escapeHtml(pf.checks.find(x=>x.key==="id").detail):"Documento cargado"}</strong></div>
+   <section class="cf1162-review">
+     <header class="cf1162-head">
+       <div>
+         <div class="cf7-eyebrow">REVISIÓN DE IDENTIDAD</div>
+         <h3>Datos principales del cliente</h3>
+         <p>Confirma que la información sea correcta antes de habilitar la auditoría.</p>
+       </div>
+       <span class="cf1162-badge">REVISIÓN REQUERIDA</span>
+     </header>
+
+     <div class="cf1162-data-grid">
+       <article class="cf1162-data-card">
+         <div class="cf1162-icon">👤</div>
+         <div><span>Nombre legal</span><strong>${escapeHtml(client.full_name||client.name||"No registrado")}</strong></div>
+       </article>
+       <article class="cf1162-data-card">
+         <div class="cf1162-icon">⌖</div>
+         <div><span>Dirección actual del expediente</span><strong>${escapeHtml(currentAddress)}</strong></div>
+       </article>
+       <article class="cf1162-data-card">
+         <div class="cf1162-icon">▣</div>
+         <div><span>Fecha de nacimiento</span><strong>${escapeHtml(dob)}</strong></div>
+       </article>
+       <article class="cf1162-data-card">
+         <div class="cf1162-icon">ID</div>
+         <div><span>Identificación</span><strong>${pf.checks?.find(x=>x.key==="id")?.detail?escapeHtml(pf.checks.find(x=>x.key==="id").detail):"Documento cargado"}</strong></div>
+       </article>
      </div>
-     <div class="cf115-addresses">
-       <div class="cf115-subhead"><strong>Direcciones detectadas en el reporte</strong><span>Clasifica cada una. No se disputará una dirección válida solamente por ser antigua.</span></div>
-       ${identityRows||`<div class="cf115-empty">No se detectaron direcciones adicionales en el reporte.</div>`}
-     </div>
-     <label class="cf115-confirm"><input type="checkbox" id="cf115-identity-confirm"> <span>Confirmo que revisé los datos del cliente y clasifiqué las direcciones conocidas.</span></label>
+
+     <section class="cf1162-address-box">
+       <div class="cf1162-address-head">
+         <div>
+           <h4>Direcciones detectadas en el reporte</h4>
+           <p>Clasifica cada una. Una dirección válida no se disputará solamente por ser antigua.</p>
+         </div>
+         <span class="cf1162-count">${addresses.length} dirección(es)</span>
+       </div>
+       <div class="cf1162-address-list">
+         ${identityRows||`<div class="cf1162-empty"><div class="cf1162-empty-icon">⌂</div><strong>No se detectaron direcciones adicionales</strong><span>El reporte no contiene otras direcciones para clasificar.</span></div>`}
+       </div>
+     </section>
+
+     <label class="cf1162-confirm">
+       <input type="checkbox" id="cf115-identity-confirm">
+       <div><strong>Confirmo que revisé los datos del cliente</strong><span>También confirmé o clasifiqué las direcciones conocidas antes de continuar.</span></div>
+     </label>
    </section>`:"";
  container.innerHTML=`
  <section class="cf8-workflow">
