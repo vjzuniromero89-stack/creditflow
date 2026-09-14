@@ -2,7 +2,7 @@ import {
   renderClientsList as renderClientsListV7,
   renderClientDetail as renderClientDetailV7,
 } from "./clients-v7.js";
-import { renderRepairWorkflowV8 } from "./repair-workflow-v8.js";
+import { renderSimpleStrategyV135 } from "./simple-strategy-v13-5.js";
 
 export async function renderClientsList(container) {
   await renderClientsListV7(container);
@@ -10,9 +10,6 @@ export async function renderClientsList(container) {
 
 export async function renderClientDetail(container, id) {
   await renderClientDetailV7(container, id);
-
-  // El workflow v8 reemplaza el case-engine antiguo para que exista una sola
-  // fuente de verdad sobre "qué toca hacer ahora".
   document.getElementById("client-case-engine")?.remove();
 
   const hero = container.querySelector(".cf7-client-hero");
@@ -29,23 +26,14 @@ export async function renderClientDetail(container, id) {
     panels?.querySelectorAll(".cf7-client-panel").forEach((p)=>p.classList.toggle("active",p.dataset.panel===key));
   }
 
-  await renderRepairWorkflowV8(workflow, id, {
-    openTab,
-    onChanged: async () => {
-      const state = await fetch(`/api/repair-cases/${id}`, { credentials:"same-origin" }).then(r=>r.json()).catch(()=>null);
-      const old = hero?.querySelector(".cf8-hero-repair-btn");
-      if (old && state?.case) {
-        old.textContent = state.case.current_stage === "completed" ? "Reparación completada" : "Continuar reparación";
-      }
-    },
-  });
+  await renderSimpleStrategyV135(workflow,id,{openTab});
 
   if (hero) {
     const identity = hero.querySelector(".cf7-client-identity");
-    const state = await fetch(`/api/repair-cases/${id}`, { credentials:"same-origin" }).then(r=>r.json()).catch(()=>null);
+    const st = await fetch(`/api/simple-strategy/client/${id}/status`, { credentials:"same-origin" }).then(r=>r.json()).catch(()=>null);
     const btn = document.createElement("button");
     btn.className = "btn btn-primary cf8-hero-repair-btn";
-    btn.innerHTML = state?.case ? "Continuar reparación" : "Empezar reparación";
+    btn.textContent = st?.generated ? "Continuar estrategia" : "Empezar estrategia";
     btn.addEventListener("click",()=>{
       openTab("resumen");
       workflow.scrollIntoView({behavior:"smooth",block:"start"});
