@@ -26,6 +26,7 @@ const STAGE_TEXT = {
 };
 const stageIndex=s=>Math.max(0,STAGES.findIndex(([k])=>k===s));
 const primaryAction=s=>({
+ preflight:["sync","Continuar a Información personal"],
  identity_review:["complete_identity_review","Confirmar información personal"],
  report_audit:["complete_report_audit","Confirmar auditoría"],
  approval_required:["approve_letters","Aprobar cartas"],
@@ -43,13 +44,33 @@ async function postGridState(){
 export async function renderRepairWorkflowV8(container,clientId,opts={}){
  container.innerHTML=`<div class="card">Cargando proceso de reparación…</div>`;
  const [state,pg]=await Promise.all([api.get(`/repair-cases/${clientId}`),postGridState()]);
- const repairCase=state.case,pf=state.preflight;
+ let repairCase=state.case; const pf=state.preflight;
  if(!repairCase){
   container.innerHTML=`<section class="cf8-start-card"><div class="cf8-start-icon">⚡</div><div><div class="cf7-eyebrow">CreditFlow Repair Engine</div><h2>Este cliente todavía no ha iniciado reparación</h2><p>Al iniciar, CreditFlow controlará requisitos, estrategia, cartas, aprobaciones, envíos, resultados y cobros desde un solo flujo.</p></div><div class="cf8-start-actions"><label>Modo inicial<select id="cf8-start-mode"><option value="assisted" selected>Asistido — recomendado</option><option value="manual">Manual</option><option value="automatic">Automático</option></select></label><button class="btn btn-primary" id="cf8-start-repair">${icon("spark")} Empezar reparación</button></div></section>`;
   container.querySelector("#cf8-start-repair").onclick=async e=>{const b=e.currentTarget;b.disabled=true;b.textContent="Iniciando…";try{await api.post(`/repair-cases/${clientId}/start`,{automation_mode:container.querySelector("#cf8-start-mode").value});toast("Proceso de reparación iniciado","success");await renderRepairWorkflowV8(container,clientId,opts);opts.onChanged?.()}catch(err){toast(err.message,"error");b.disabled=false;b.innerHTML=`${icon("spark")} Empezar reparación`}};
   return;
  }
- const idx=stageIndex(repairCase.current_stage),[headline,description]=STAGE_TEXT[repairCase.current_stage]||["Continuar caso",repairCase.next_action||""],[action,actionLabel]=primaryAction(repairCase.current_stage),events=(state.events||[]).slice(0,5);
+ // Preflight has no discretionary decision: if all four requirements are green,
+ // Assisted mode advances it automatically. If the request fails, the visible
+ // "Continuar" button remains available as a safe fallback.
+ if(repairCase.current_stage==="preflight" && pf.ready && repairCase.automation_mode!=="manual"){
+   try{
+     const advanced=await sendAction(clientId,"sync");
+     if(advanced?.case?.current_stage && advanced.case.current_stage!=="preflight"){
+       repairCase=advanced.case;
+       state.events=state.events||[];
+     }
+   }catch(e){
+     console.warn("Preflight auto-advance failed",e);
+   }
+ }
+ const idx=stageIndex(repairCase.current_stage),
+       stageCopy=(repairCase.current_stage==="preflight" && pf.ready)
+         ? ["Preflight completo","Todos los requisitos están completos. Continúa a Información personal."]
+         : (STAGE_TEXT[repairCase.current_stage]||["Continuar caso",repairCase.next_action||""]),
+       [headline,description]=stageCopy,
+       [action,actionLabel]=primaryAction(repairCase.current_stage),
+       events=(state.events||[]).slice(0,5);
  const provider=pg.provider||{}, jobs=(pg.jobs||[]).filter(j=>String(j.client_id)===String(clientId));
  const connected=provider.connection_status==="connected";
  const keyOk=!!provider.credentials_configured;
