@@ -169,6 +169,21 @@ async function prepare(env,clientId){
 
 export default{async fetch(request,env,ctx){
  const u=new URL(request.url),m=request.method.toUpperCase();
+ const strategyState=u.pathname.match(/^\/api\/strategy\/client\/(\d+)$/);
+ if(m==="GET"&&strategyState){
+   const resp=await v123.fetch(request,env,ctx);
+   if(!resp.ok)return resp;
+   try{
+     const data=await resp.json();
+     const active=(data.items||[]).filter(x=>x.removed_status!=="eliminado");
+     const audited=active.filter(x=>x.assessment?.human_verified||x.assessment?.auto_ready).length;
+     data.summary=data.summary||{};
+     data.summary.items=active.length;
+     data.summary.assessed=audited;
+     data.summary.auto_assessed=active.filter(x=>x.assessment?.auto_ready&&!x.assessment?.human_verified).length;
+     return out(data,200);
+   }catch{return resp}
+ }
  const match=u.pathname.match(/^\/api\/automation\/client\/(\d+)\/prepare-strategy$/);
  if(m==="POST"&&match){
    if(!(await auth(request,env,ctx)))return out({error:"No autorizado"},401);
