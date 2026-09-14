@@ -1,0 +1,51 @@
+CREDITFLOW — BACKEND AUTOMÁTICO v3
+
+QUÉ HACE
+========
+1. Protege contra importar exactamente el mismo PDF dos veces.
+2. Registra cada importación por SHA-256.
+3. Crea un evento histórico permanente cuando un ítem queda eliminado.
+4. Congela la tarifa de esa remoción en el momento del evento.
+5. Si el ítem reaparece, NO borra el evento histórico: lo marca "reappeared".
+6. Sincroniza Pagado / Por cobrar con el evento.
+7. Ganancias pasa a usar removal_events para la ganancia real.
+8. Los ítems que todavía aparecen siguen siendo "Potencial".
+9. Las tablas nuevas se crean automáticamente desde el Worker: no necesitas ejecutar SQL manualmente.
+
+ARCHIVOS
+========
+REEMPLAZAR:
+- creditflow/wrangler.jsonc
+- creditflow/public/assets/js/sections/earnings.js
+
+AGREGAR:
+- creditflow/src/index-auto.js
+
+NO BORRAR:
+- creditflow/src/index.js
+- creditflow/src/db-shim.js
+
+IMPORTANTE
+==========
+wrangler.jsonc cambia:
+  main: "./src/index.js"
+a:
+  main: "./src/index-auto.js"
+
+index-auto.js envuelve el backend actual; no reemplaza el parser ni las rutas que ya funcionan.
+
+DESPUÉS DE SUBIR
+================
+1. Espera el deploy de Cloudflare.
+2. Entra a CreditFlow.
+3. Abre Ganancias.
+4. Importa un reporte nuevo de un cliente.
+5. Si intentas importar exactamente el mismo PDF otra vez, debe aparecer:
+   "Este mismo PDF ya fue importado para este cliente."
+
+NOTA SOBRE REPORTES VIEJOS
+==========================
+Esta fase evita duplicados idénticos y hace la ganancia histórica irreversible.
+La siguiente fase añadirá una validación fuerte de cronología del reporte antes de reconciliar,
+usando la fecha extraída por el parser para impedir que un reporte más viejo pueda cambiar
+removed_status/direcciones.
