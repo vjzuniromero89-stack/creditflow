@@ -1,10 +1,7 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "creditflow",
-  "main": "./src/index-v13-1.js",
-  "compatibility_date": "2026-09-03",
-  "assets": {"directory":"./public","binding":"ASSETS"},
-  "vars": {"SUPABASE_URL":"https://hpimqcnkcoqmalslknnn.supabase.co"},
-  "ai": {"binding":"AI"},
-  "observability": {"enabled":true}
+  "main": "./src/index-v13-2.js",
+  "compatibility_date": "2025-08-01",
+  "assets": { "directory": "./public", "binding": "ASSETS" },
+  "observability": { "enabled": true }
 }
