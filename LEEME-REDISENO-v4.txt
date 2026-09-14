@@ -1,0 +1,57 @@
+CREDITFLOW — REDISEÑO COMPLETO v4
+
+OBJETIVO
+=======
+Unificar toda la aplicación como un software profesional:
+- navegación organizada por áreas;
+- tamaños, espacios y alineaciones consistentes;
+- tarjetas, tablas, botones y formularios uniformes;
+- jerarquía clara en todas las pestañas;
+- ficha de cliente centrada en el Motor Automático;
+- diseño responsive para laptop, tablet y celular.
+
+ARCHIVOS
+========
+REEMPLAZAR:
+1. creditflow/public/index.html
+2. creditflow/public/assets/js/app.js
+
+AGREGAR:
+3. creditflow/public/assets/css/redesign-v4.css
+
+NO BORRAR:
+- styles.css
+- automation.css
+- earnings-smart.css
+- case-engine.css
+- clients-auto.js
+- ningún archivo de backend
+
+ESTRUCTURA NUEVA DEL MENÚ
+=========================
+OPERACIÓN
+- Dashboard
+- Clientes
+- Ganancias
+
+TRABAJO
+- Cartas
+- Envíos certificados
+- Plantillas
+
+ADMINISTRACIÓN
+- Usuarios portal
+- Ajustes
+
+IMPORTANTE
+==========
+Este rediseño no cambia APIs, Supabase, reportes, cartas, estrategias ni datos.
+Solo reorganiza y rediseña la interfaz completa.
+
+DESPUÉS DE SUBIR
+================
+1. Espera el deploy de Cloudflare.
+2. Haz Ctrl + F5.
+3. Revisa Dashboard.
+4. Abre un cliente.
+5. Revisa Ganancias, Cartas, Envíos, Plantillas, Usuarios y Ajustes.
