@@ -27,10 +27,10 @@ export async function renderSimpleStrategyV135(container,clientId,opts={}){
   container.innerHTML=`<section class="cf135">
     <div class="cf135-hero">
       <div>
-        <div class="cf7-eyebrow">CreditFlow Strategy Engine · v13.5.3</div>
+        <div class="cf7-eyebrow">CreditFlow Strategy Engine · v13.5.4</div>
         <h2>${complete?"Estrategia completa":started?"Completar estrategia":"Empezar estrategia"}</h2>
         <p>${complete
-          ?"Cada negativo tiene su carta de Round 1 dirigida automáticamente al buró que lo reporta. CreditFlow obtiene el nombre y la dirección postal de Experian, Equifax o TransUnion sin que tengas que escribirla."
+          ?"Cada negativo tiene su carta Round 1 al buró correspondiente. Además, CreditFlow identifica automáticamente el acreedor o collector del tradeline y guarda su dirección verificada para los siguientes envíos."
           :started
             ?`Hay ${st.remaining||0} cuenta(s) negativa(s) que todavía necesitan su carta.`
             :"CreditFlow crea una carta para cada negativo y la dirige automáticamente al buró correspondiente."}</p>
@@ -51,11 +51,11 @@ export async function renderSimpleStrategyV135(container,clientId,opts={}){
       <div class="cf135-kpi"><span>${st.negatives||0}</span><strong>NEGATIVOS</strong></div>
       <div class="cf135-kpi"><span>${st.generated||0}</span><strong>CARTAS GENERADAS</strong></div>
       <div class="cf135-kpi"><span>${st.ready||0}</span><strong>LISTAS PARA ENVÍO</strong></div>
-      <div class="cf135-kpi"><span>${st.missing_address||0}</span><strong>FALTA DIRECCIÓN</strong></div>
+      <div class="cf135-kpi"><span>${st.entities_resolved||0}</span><strong>ACREEDOR / COLLECTOR DETECTADO</strong></div>
     </div>
 
     ${st.remaining?`<div class="cf135-note">Faltan ${st.remaining} carta(s) para completar la estrategia.</div>`:""}
-    ${st.missing_address?`<div class="cf135-note">${st.missing_address} carta(s) se corregirán automáticamente usando la dirección oficial del buró al aprobar.</div>`:""}
+    ${st.entities_unresolved?`<div class="cf135-note">${st.entities_unresolved} entidad(es) todavía no tienen una coincidencia verificada en el directorio. CreditFlow no inventará una dirección; las demás quedan resueltas automáticamente.</div>`:""}
   </section>`;
 
   container.querySelector("#cf135-start")?.addEventListener("click",async e=>{
