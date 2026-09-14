@@ -1,6 +1,5 @@
-// CreditFlow v13.5 — Simple Strategy Flow
-// Removes the separate Aggressive Compliance UI and turns "Empezar estrategia"
-// into the single entry point for all negative accounts.
+// CreditFlow v13.5.2 — Complete Negative Strategy
+// Includes settled/liquidated negative accounts in the same simple strategy flow.
 import v134 from "./index-v13-4.js";
 import baseWorker from "./index.js";
 import { createD1Shim } from "./db-shim.js";
@@ -32,6 +31,8 @@ function routeFor(item){
     return {template_id:68,code:"ACE62",label:"Late Payment Reporting Challenge",recipient_type:"furnisher"};
   if(["inquiry","inquiries","consulta","hard_inquiry"].includes(c))
     return {template_id:69,code:"ACE63",label:"Inquiry Permissible-Purpose Challenge",recipient_type:"furnisher"};
+  if(["liquidada","liquidado","settled","settled_account"].includes(c))
+    return {template_id:70,code:"ACE64",label:"Settled Account Reporting Challenge",recipient_type:"furnisher"};
   return null;
 }
 
@@ -49,8 +50,9 @@ function mapFor(client,item,recipientName,recipientAddress){
     item.date_reported?`Date reported: ${item.date_reported}.`:"",
     item.date_opened?`Date opened: ${item.date_opened}.`:"",
     item.bureaus?`Bureau(s): ${item.bureaus}.`:"",
-    "Please review the account-level information and respond in writing with the results of the applicable investigation or validation process."
+    "Please review the account-level information and respond in writing with the results of the applicable investigation, validation, or reporting review."
   ].filter(Boolean).join(" ");
+
   return {
     fecha:new Date().toLocaleDateString("en-US"),
     cliente_nombre:client.full_name||"",
@@ -77,6 +79,8 @@ async function status(db,clientId){
   return {
     negatives:eligible.length,
     generated:letters.length,
+    remaining:Math.max(0,eligible.length-letters.length),
+    complete:eligible.length>0 && letters.length>=eligible.length,
     ready,
     drafts:letters.filter(l=>l.status==="borrador").length,
     missing_address:missingAddress,
@@ -97,13 +101,15 @@ async function startStrategy(db,clientId){
   let created=0,reused=0;
   for(const item of items){
     const route=routeFor(item); if(!route)continue;
+
     const existing=await db.prepare(`
       SELECT id FROM letters
       WHERE client_id=? AND credit_item_id=? AND template_id=?
         AND notes LIKE 'simple_strategy_v13_5%'
-        AND status IN ('borrador','lista','enviado')
+        AND status IN ('borrador','lista','enviada','en_transito','entregada','respondida','completada')
       LIMIT 1
     `).bind(clientId,item.id,route.template_id).first();
+
     if(existing){reused++;continue}
 
     const tpl=await db.prepare(`SELECT * FROM letter_templates WHERE id=? AND is_active=1`).bind(route.template_id).first();
@@ -132,8 +138,8 @@ async function startStrategy(db,clientId){
     rc=await db.prepare(`
       INSERT INTO repair_cases(
         client_id,status,automation_mode,current_stage,next_action,approval_required,
-        approved_for_auto_send,certified_mail_status,started_at,last_transition_at
-      ) VALUES(?,'active','automatic','approval_required','Revisar y enviar cartas',TRUE,FALSE,'not_started',NOW(),NOW())
+        approved_for_auto_send,certified_mail_status,started_at
+      ) VALUES(?,'active','automatic','approval_required','Revisar y enviar cartas',TRUE,FALSE,'not_started',NOW())
       RETURNING *
     `).bind(clientId).first();
   }else{
@@ -150,6 +156,11 @@ async function startStrategy(db,clientId){
 }
 
 async function approveAll(db,clientId){
+  const st=await status(db,clientId);
+  if(!st.complete){
+    return {error:`La estrategia todavía está incompleta: faltan ${st.remaining} carta(s).`,status:409,...st};
+  }
+
   const {results:letters=[]}=await db.prepare(`
     SELECT * FROM letters
     WHERE client_id=? AND notes LIKE 'simple_strategy_v13_5%' AND status='borrador'
@@ -211,7 +222,7 @@ export default{
     hit=u.pathname.match(/^\/api\/simple-strategy\/client\/(\d+)\/approve-all$/);
     if(hit&&m==="POST"){
       if(!(await auth(request,env,ctx)))return out({error:"No autorizado"},401);
-      try{return out(await approveAll(createD1Shim(env),Number(hit[1])))}
+      try{const r=await approveAll(createD1Shim(env),Number(hit[1]));return out(r,r.error?(r.status||400):200)}
       catch(e){return out({error:"No se pudieron preparar las cartas para Envíos",detail:String(e?.message||e)},500)}
     }
 
