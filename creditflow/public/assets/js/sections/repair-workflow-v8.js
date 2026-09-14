@@ -87,7 +87,12 @@ export async function renderRepairWorkflowV8(container,clientId,opts={}){
    [client.state||"",client.zip||client.zip_code||client.postal_code||""].filter(Boolean).join(" ")
  ].filter(Boolean).join(", ");
  const currentAddress=streetAddress||"No registrada";
- const dob=client.dob||client.date_of_birth||client.birth_date||"No disponible";
+ const dobRaw=client.dob||client.date_of_birth||client.birth_date||"";
+ const formatBirthDateUS=(value)=>{
+   const m=String(value||"").match(/^(\d{4})-(\d{2})-(\d{2})/);
+   return m?`${m[2]}/${m[3]}/${m[1]}`:(value||"No disponible");
+ };
+ const dob=formatBirthDateUS(dobRaw);
  const identityRows=addresses.map((a,i)=>`
    <div class="cf115-address-row">
      <div><strong>${escapeHtml(a.address_line||"Dirección")}</strong><small>${escapeHtml(a.bureaus||"Detectada en reporte")}</small></div>
