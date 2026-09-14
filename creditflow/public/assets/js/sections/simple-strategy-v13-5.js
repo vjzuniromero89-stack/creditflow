@@ -68,7 +68,11 @@ export async function renderSimpleStrategyV135(container,clientId,opts={}){
     const b=e.currentTarget;b.disabled=true;b.textContent="Preparando Envíos…";
     try{
       const r=await api.post(`/simple-strategy/client/${clientId}/approve-all`,{});
-      toast(`${r.ready} carta(s) listas en Envíos certificados`,"success");
+      if(r.needs_addresses){
+        toast(`${r.missing_address} carta(s) necesitan dirección postal antes de pasar a Envíos`,"warning");
+      }else{
+        toast(`${r.ready} carta(s) listas en Envíos certificados`,"success");
+      }
       await renderSimpleStrategyV135(container,clientId,opts);
       opts.onChanged?.();
     }catch(err){toast(err.message||"No se pudieron preparar los envíos","error");b.disabled=false;b.textContent="Aprobar y mandar a Envíos"}
