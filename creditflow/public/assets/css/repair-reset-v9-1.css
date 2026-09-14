@@ -1,0 +1,31 @@
+/* CreditFlow v9.1 — Pause / Reset Repair */
+.cf91-repair-controls{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  margin:10px 0;padding:9px 11px;border:1px solid var(--cf7-line);border-radius:10px;
+  background:rgba(255,255,255,.012)
+}
+.cf91-control-info span{display:block;color:var(--cf7-muted);font-size:7.8px;text-transform:uppercase;letter-spacing:.08em}
+.cf91-control-info strong{display:block;margin-top:2px;font-size:9.5px}
+.cf91-control-actions{display:flex;gap:6px;flex-wrap:wrap}
+.cf91-reset-warning{text-align:left}
+.cf91-reset-icon{
+  width:44px;height:44px;border-radius:12px;display:grid;place-items:center;
+  background:rgba(255,122,139,.08);color:var(--cf7-red);font-size:22px;margin-bottom:10px
+}
+.cf91-reset-warning h3{margin:0 0 6px!important;font-size:16px!important}
+.cf91-reset-warning>p{margin:0;color:var(--cf7-muted);font-size:9.5px;line-height:1.5}
+.cf91-preserve{
+  display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:12px 0;padding:10px;
+  border:1px solid var(--cf7-line);border-radius:9px;background:rgba(69,212,157,.025)
+}
+.cf91-preserve strong{grid-column:1/-1;font-size:9px;margin-bottom:2px}.cf91-preserve span{font-size:8.5px;color:#a7d6c6}
+.cf91-confirm-check{
+  display:flex;gap:8px;align-items:flex-start;padding:9px;border:1px solid rgba(244,201,93,.12);
+  border-radius:8px;color:var(--cf7-text);font-size:8.7px;font-weight:500
+}
+@media(max-width:720px){
+  .cf91-repair-controls{flex-direction:column;align-items:stretch}
+  .cf91-control-actions{display:grid;grid-template-columns:1fr}
+  .cf91-preserve{grid-template-columns:1fr}
+  .cf91-preserve strong{grid-column:1}
+}
