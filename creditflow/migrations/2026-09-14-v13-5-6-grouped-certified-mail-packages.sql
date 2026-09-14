@@ -1,0 +1,6 @@
+-- CreditFlow v13.5.6
+-- THIS MIGRATION HAS ALREADY BEEN APPLIED DIRECTLY TO SUPABASE.
+-- It creates:
+--   certified_mail_packages
+--   certified_mail_package_letters
+-- Do not run manually unless setting up a fresh database.
