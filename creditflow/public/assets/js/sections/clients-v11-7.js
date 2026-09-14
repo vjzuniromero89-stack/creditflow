@@ -4,10 +4,12 @@ import { api } from "../api.js";
 import { renderRealAuditV117 } from "./audit-v11-7.js";
 import { renderStrategyIntelligenceV122 } from "./strategy-intelligence-v12-2.js";
 import { applyWorkflowGuardV124 } from "./workflow-guard-v12-4.js";
+import { installAggressiveComplianceTab } from "./aggressive-compliance-v13.js";
 
 export async function renderClientsList(container){await renderListV10(container)}
 export async function renderClientDetail(container,id){
  await renderDetailV10(container,id);
+ await installAggressiveComplianceTab(container,id);
  const strategyPanel=container.querySelector('[data-panel="estrategia"]');
  if(strategyPanel&&!strategyPanel.querySelector("#cf122-intelligence")){
    const host=document.createElement("div");host.id="cf122-intelligence";
