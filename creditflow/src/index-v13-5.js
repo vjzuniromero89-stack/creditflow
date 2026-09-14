@@ -78,6 +78,74 @@ function mapFor(client,item,bureau){
   };
 }
 
+
+function entityKey(v){
+  return norm(v).replace(/[^a-z0-9]/g,"");
+}
+async function resolveCreditorCollector(db,name){
+  const key=entityKey(name);
+  if(!key)return null;
+
+  let row=await db.prepare(`
+    SELECT d.* FROM recipient_aliases a
+    JOIN recipient_directory d ON d.id=a.recipient_id
+    WHERE a.alias_normalized=? AND d.active=TRUE
+    LIMIT 1
+  `).bind(key).first();
+  if(row)return row;
+
+  // Common report abbreviations such as SYNCB/store-name keep a stable prefix.
+  const prefixes=["syncb","lvnvfunding","lvnvfundg","santanderconsumer","brclyodnvy","seccredit"];
+  const prefix=prefixes.find(p=>key.startsWith(p));
+  if(prefix){
+    row=await db.prepare(`
+      SELECT d.* FROM recipient_aliases a
+      JOIN recipient_directory d ON d.id=a.recipient_id
+      WHERE a.alias_normalized=? AND d.active=TRUE
+      LIMIT 1
+    `).bind(prefix).first();
+  }
+  return row||null;
+}
+
+async function resolveAllEntities(db,items){
+  let resolved=0,unresolved=0;
+  const entities=[];
+  for(const item of items){
+    const r=await resolveCreditorCollector(db,item.creditor_name);
+    if(r){
+      resolved++;
+      entities.push({
+        credit_item_id:item.id,
+        reported_name:item.creditor_name,
+        canonical_name:r.canonical_name,
+        entity_type:r.entity_type,
+        mailing_name:r.mailing_name,
+        mailing_address:r.mailing_address,
+        address_purpose:r.address_purpose,
+        source_url:r.source_url,
+        verified_at:r.verified_at
+      });
+      // Persist the verified directory address on the tradeline for later creditor/collector rounds.
+      if(!String(item.creditor_address||"").trim()){
+        await db.prepare(`UPDATE credit_items SET creditor_address=? WHERE id=?`).bind(r.mailing_address,item.id).run();
+        item.creditor_address=r.mailing_address;
+      }
+    }else{
+      unresolved++;
+      entities.push({
+        credit_item_id:item.id,
+        reported_name:item.creditor_name,
+        canonical_name:null,
+        entity_type:null,
+        mailing_address:null,
+        unresolved:true
+      });
+    }
+  }
+  return {resolved,unresolved,entities};
+}
+
 async function getContext(db,clientId){
   const [client,{results:items=[]},tpl]=await Promise.all([
     db.prepare(`SELECT * FROM clients WHERE id=?`).bind(clientId).first(),
@@ -92,6 +160,7 @@ async function normalizeLetters(db,clientId){
   if(!client)return {error:"Cliente no encontrado",status:404};
   if(!tpl)return {error:"La plantilla CRA Round 1 no está disponible.",status:500};
 
+  const entityResolution=await resolveAllEntities(db,items);
   let created=0,updated=0,unresolved=0;
   for(const item of items){
     const bureau=bureauFor(item.bureaus);
@@ -133,7 +202,12 @@ async function normalizeLetters(db,clientId){
       created++;
     }
   }
-  return {ok:true,created,updated,unresolved,total:items.length};
+  return {
+    ok:true,created,updated,unresolved,total:items.length,
+    entities_resolved:entityResolution.resolved,
+    entities_unresolved:entityResolution.unresolved,
+    entity_resolution:entityResolution.entities
+  };
 }
 
 async function status(db,clientId){
@@ -142,6 +216,11 @@ async function status(db,clientId){
     db.prepare(`SELECT * FROM letters WHERE client_id=? AND notes LIKE 'simple_strategy_v13_5%' ORDER BY id DESC`).bind(clientId).all()
   ]);
   const eligible=items.filter(i=>eligibleCategory(i.category));
+  let entitiesResolved=0,entitiesUnresolved=0;
+  for(const item of eligible){
+    if(await resolveCreditorCollector(db,item.creditor_name))entitiesResolved++;
+    else entitiesUnresolved++;
+  }
   const ready=letters.filter(l=>l.status==="lista").length;
   const missingAddress=letters.filter(l=>!String(l.recipient_address||"").trim()).length;
   return {
@@ -152,6 +231,8 @@ async function status(db,clientId){
     ready,
     drafts:letters.filter(l=>l.status==="borrador").length,
     missing_address:missingAddress,
+    entities_resolved:entitiesResolved,
+    entities_unresolved:entitiesUnresolved,
     letters
   };
 }
@@ -216,7 +297,17 @@ async function approveAll(db,clientId){
 export default{
   async fetch(request,env,ctx){
     const u=new URL(request.url),m=request.method.toUpperCase();
-    let hit=u.pathname.match(/^\/api\/simple-strategy\/client\/(\d+)\/status$/);
+    let hit=u.pathname.match(/^\/api\/simple-strategy\/client\/(\d+)\/recipient-resolution$/);
+    if(hit&&m==="GET"){
+      if(!(await auth(request,env,ctx)))return out({error:"No autorizado"},401);
+      try{
+        const db=createD1Shim(env);
+        const {items=[]}=await getContext(db,Number(hit[1]));
+        return out(await resolveAllEntities(db,items));
+      }catch(e){return out({error:"No se pudieron resolver acreedores/collectors",detail:String(e?.message||e)},500)}
+    }
+
+    hit=u.pathname.match(/^\/api\/simple-strategy\/client\/(\d+)\/status$/);
     if(hit&&m==="GET"){
       if(!(await auth(request,env,ctx)))return out({error:"No autorizado"},401);
       try{return out(await status(createD1Shim(env),Number(hit[1])))}
