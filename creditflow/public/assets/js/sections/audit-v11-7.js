@@ -41,6 +41,64 @@ function maskAccount(v){
 function label(list,v){return list.find(x=>x[0]===v)?.[1]||String(v||"—")}
 function reviewed(item){return !!item.assessment?.human_verified}
 
+
+function norm(v){return String(v??"").trim().toLowerCase().replace(/\s+/g," ")}
+function acctKey(item){
+ const digits=String(item.account_number||"").replace(/\D/g,"");
+ const last4=digits.slice(-4);
+ return `${norm(item.creditor_name)}|${last4||norm(item.account_number)}`;
+}
+function bureauName(v){
+ const s=norm(v);
+ if(s.includes("experian"))return "Experian";
+ if(s.includes("equifax"))return "Equifax";
+ if(s.includes("transunion")||s.includes("trans union"))return "TransUnion";
+ return String(v||"Otro");
+}
+function smartGroups(items){
+ const map=new Map();
+ for(const item of items){
+   const k=acctKey(item);
+   if(!map.has(k))map.set(k,[]);
+   map.get(k).push(item);
+ }
+ return [...map.values()];
+}
+function compareGroup(group){
+ const fields=[
+  ["balance","Balance"],["status_raw","Estado"],["category","Categoría"],
+  ["date_opened","Fecha de apertura"],["opened_date","Fecha de apertura"],
+  ["date_of_first_delinquency","Primera morosidad"],["first_delinquency_date","Primera morosidad"],
+  ["last_payment_date","Último pago"],["original_creditor","Acreedor original"],
+  ["account_type","Tipo de cuenta"],["payment_status","Payment status"]
+ ];
+ const findings=[];
+ const seenLabels=new Set();
+ for(const [key,labelText] of fields){
+   if(seenLabels.has(labelText))continue;
+   const vals=group.map(x=>({bureau:bureauName(x.bureaus),value:x[key]})).filter(x=>x.value!==null&&x.value!==undefined&&String(x.value).trim()!=="");
+   if(vals.length<2)continue;
+   const unique=[...new Set(vals.map(x=>norm(x.value)))];
+   if(unique.length>1){
+     findings.push({type:key,label:labelText,values:vals});
+     seenLabels.add(labelText);
+   }
+ }
+ return findings;
+}
+function groupCard(group){
+ const first=group[0],findings=compareGroup(group);
+ const bureauSet=[...new Set(group.map(x=>bureauName(x.bureaus)))];
+ return `<article class="cf118-group ${findings.length?"has-findings":"no-findings"}">
+   <div class="cf118-group-head">
+    <div><strong>${escapeHtml(first.creditor_name||"Cuenta")}</strong>
+      <span>${escapeHtml(maskAccount(first.account_number))} · ${bureauSet.length} buró(s)</span></div>
+    <b>${findings.length?`⚠ ${findings.length} inconsistencia(s)`:"✓ Sin diferencias detectadas"}</b>
+   </div>
+   ${findings.length?`<div class="cf118-findings">${findings.map(f=>`<div><strong>${escapeHtml(f.label)}</strong><span>${f.values.map(v=>`${escapeHtml(v.bureau)}: <b>${escapeHtml(String(v.value))}</b>`).join(" · ")}</span></div>`).join("")}</div>`:""}
+ </article>`;
+}
+
 function assessmentModal(item,onSaved){
  const a=item.assessment||{};
  const {close,body}=openModal({
@@ -102,9 +160,13 @@ export async function renderRealAuditV117(container,clientId,{onComplete}={}){
  const items=(state.items||[]).filter(x=>x.removed_status!=="eliminado");
  const done=items.filter(reviewed).length,total=items.length,pct=total?Math.round(done/total*100):0;
  container.innerHTML=`<section class="cf117-audit">
-  <header class="cf117-head"><div><div class="cf7-eyebrow">ETAPA 3 · AUDITORÍA</div><h3>Auditoría del reporte</h3><p>Revisa cada ítem antes de permitir que CreditFlow construya una estrategia.</p></div><div class="cf117-progress"><strong>${done} / ${total}</strong><span>auditados</span></div></header>
+  <header class="cf117-head"><div><div class="cf7-eyebrow">ETAPA 3 · AUDITORÍA INTELIGENTE</div><h3>Auditoría del reporte</h3><p>CreditFlow compara las cuentas entre burós y luego requiere revisión humana antes de construir la estrategia.</p></div><div class="cf118-head-actions"><button id="cf118-audit-all" class="btn btn-primary">Auditar todo</button><div class="cf117-progress"><strong>${done} / ${total}</strong><span>auditados</span></div></div></header>
   <div class="cf117-progressbar"><i style="width:${pct}%"></i></div>
   <div class="cf117-notice"><strong>No se disputará todo automáticamente.</strong><span>Cada decisión debe tener una base factual. Las cuentas correctas se marcan “Correcto / no disputar”.</span></div>
+  <section class="cf118-smart">
+   <div class="cf118-smart-head"><div><strong>Comparación automática de los 3 burós</strong><span>Agrupa la misma cuenta y señala diferencias visibles en los datos importados. Una diferencia es una señal para revisar, no una razón automática para disputar.</span></div></div>
+   <div class="cf118-groups">${smartGroups(items).map(groupCard).join("")}</div>
+  </section>
   <div class="cf117-list">
    ${items.map((item,i)=>`<article class="cf117-item ${reviewed(item)?"is-done":""}">
     <div class="cf117-index">${reviewed(item)?"✓":i+1}</div>
@@ -123,6 +185,31 @@ export async function renderRealAuditV117(container,clientId,{onComplete}={}){
   const item=items.find(x=>String(x.id)===String(b.dataset.audit));
   assessmentModal(item,()=>renderRealAuditV117(container,clientId,{onComplete}));
  });
+
+ const auditAll=container.querySelector("#cf118-audit-all");
+ if(auditAll){
+   auditAll.onclick=()=>{
+     const pending=items.filter(x=>!reviewed(x));
+     if(!pending.length)return toast("Todos los ítems ya están auditados.","success");
+     let pos=0;
+     const next=()=>{
+       if(pos>=pending.length){
+         toast("Revisión rápida completada.","success");
+         return renderRealAuditV117(container,clientId,{onComplete});
+       }
+       const item=pending[pos++];
+       assessmentModal(item,async()=>{
+         await renderRealAuditV117(container,clientId,{onComplete});
+         // Re-open next pending item after the list refresh.
+         const fresh=await api.get(`/strategy/client/${clientId}`);
+         const nextItem=(fresh.items||[]).filter(x=>x.removed_status!=="eliminado"&&!reviewed(x))[0];
+         if(nextItem)assessmentModal(nextItem,async()=>renderRealAuditV117(container,clientId,{onComplete}));
+       });
+     };
+     next();
+   };
+ }
+
  container.querySelector("#cf117-complete")?.addEventListener("click",async e=>{
   e.currentTarget.disabled=true;e.currentTarget.textContent="Validando…";
   try{
