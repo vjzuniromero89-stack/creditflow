@@ -1,0 +1,52 @@
+CREDITFLOW — ESTRATEGIA PROFESIONAL v6
+
+REEMPLAZAR
+1. creditflow/public/index.html
+2. creditflow/public/assets/js/app.js
+3. creditflow/public/assets/js/sections/clients-auto.js
+
+AGREGAR
+4. creditflow/public/assets/js/sections/templates-pro.js
+5. creditflow/public/assets/js/sections/strategy-engine-v2.js
+6. creditflow/public/assets/css/strategy-v6.css
+
+QUÉ CAMBIA
+==========
+- "Plantillas" pasa a "Estrategia y plantillas".
+- Aparece un Playbook de 7 fases.
+- Botón para instalar una biblioteca profesional de 13 plantillas.
+- Cada plantilla tiene condición de uso.
+- Identity theft, goodwill, validation, furnisher y follow-up requieren revisión humana.
+- Solo se permiten borradores automáticos cuando hay una base suficientemente clara:
+  * factual dispute con notas específicas;
+  * unauthorized inquiry explícitamente indicada;
+  * reinsertion detectada por el historial de CreditFlow.
+- Si existe una carta en proceso, no crea otra encima.
+- Si una carta fue entregada recientemente, el motor recomienda esperar.
+- No genera una Round 2 solamente porque pasó tiempo.
+- El Freeze cambia de explicación: protección contra fraude/identity theft, no obstrucción de verificaciones.
+
+BIBLIOTECA
+==========
+01 Personal Information Correction
+02 Mixed File Correction
+10 CRA Factual Dispute — Initial
+11 Unauthorized Inquiry Dispute
+12 Identity Theft Block — FCRA 605B
+20 Debt Validation / Information Request
+21 Direct Furnisher Dispute
+30 CRA Reinvestigation — New Evidence
+31 FCRA 611(a)(7) Procedure Description Request
+32 Reinsertion Challenge
+40 Goodwill Adjustment Request
+41 Post-Payment / Settlement Reporting Correction
+50 CFPB Complaint Evidence Narrative
+
+IMPORTANTE
+==========
+Después de subir:
+1. Espera deploy.
+2. Ctrl+F5.
+3. Abre "Estrategia y plantillas".
+4. Pulsa "Instalar / completar biblioteca".
+5. Después abre un cliente: aparecerá "Professional Strategy Engine".
