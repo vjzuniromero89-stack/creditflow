@@ -1,0 +1,2 @@
+-- Migration creditflow_v13_5_4_recipient_resolution_directory already applied directly to Supabase.
+-- Creates recipient_directory + recipient_aliases and seeds verified current entities.
