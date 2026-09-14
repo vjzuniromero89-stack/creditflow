@@ -1,0 +1,412 @@
+/* CreditFlow — Ganancias Inteligente */
+
+.smart-profit {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.smart-profit-loading {
+  min-height: 240px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 14px;
+}
+
+.smart-profit-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 24px;
+  border: 1px solid rgba(52,211,153,.18);
+  border-radius: var(--radius-md);
+  background:
+    radial-gradient(circle at 85% 20%, rgba(52,211,153,.10), transparent 30%),
+    var(--surface);
+}
+
+.smart-profit-eyebrow {
+  color: var(--green);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-size: 11px;
+  font-weight: 800;
+  margin-bottom: 5px;
+}
+
+.smart-profit-hero h2 {
+  font-size: 24px;
+  margin-bottom: 7px;
+}
+
+.smart-profit-hero p {
+  color: var(--text-1);
+  max-width: 820px;
+  margin: 0;
+  line-height: 1.55;
+}
+
+.smart-profit-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  padding: 8px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(52,211,153,.28);
+  background: rgba(52,211,153,.08);
+  color: #9df0cf;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.smart-profit-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 12px rgba(52,211,153,.8);
+}
+
+.smart-profit-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.smart-profit-card {
+  min-height: 142px;
+  padding: 18px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+}
+
+.smart-profit-card.smart-profit-primary {
+  border-color: rgba(52,211,153,.30);
+  background:
+    linear-gradient(135deg, rgba(52,211,153,.11), rgba(34,211,238,.05)),
+    var(--surface);
+}
+
+.smart-profit-label {
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .075em;
+}
+
+.smart-profit-value {
+  font-family: var(--font-display);
+  font-size: clamp(27px, 2vw, 34px);
+  font-weight: 800;
+  line-height: 1;
+  margin: 10px 0 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.smart-profit-primary .smart-profit-value {
+  color: var(--green);
+}
+
+.smart-profit-meta {
+  margin-top: auto;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.smart-profit-progress {
+  padding: 18px 20px;
+}
+
+.smart-profit-progress-head,
+.smart-profit-progress-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.smart-profit-progress-head strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 22px;
+  margin-top: 2px;
+}
+
+.smart-profit-track {
+  margin: 13px 0 10px;
+  height: 8px;
+  background: rgba(255,255,255,.06);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.smart-profit-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--grad-success);
+}
+
+.smart-profit-progress-foot {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.smart-profit-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, .65fr);
+  gap: 18px;
+}
+
+.smart-profit-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.smart-profit-section-head h3 {
+  font-size: 16px;
+  margin-bottom: 3px;
+}
+
+.smart-removal-list,
+.smart-client-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.smart-removal-row,
+.smart-client-row {
+  width: 100%;
+  appearance: none;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: rgba(255,255,255,.025);
+  border-radius: 12px;
+  transition: .15s ease;
+}
+
+.smart-removal-row:hover,
+.smart-client-row:hover {
+  background: rgba(255,255,255,.05);
+  border-color: var(--border);
+}
+
+.smart-removal-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+}
+
+.smart-removal-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: #062018;
+  background: var(--grad-success);
+  font-weight: 900;
+}
+
+.smart-removal-main {
+  min-width: 0;
+}
+
+.smart-removal-title {
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.smart-removal-sub {
+  color: var(--text-1);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smart-removal-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.smart-removal-tags span {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--text-2);
+  font-size: 10.5px;
+}
+
+.smart-removal-amount {
+  text-align: right;
+  color: var(--green);
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.smart-removal-amount small {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-2);
+  font-family: var(--font-body);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.smart-client-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 13px;
+}
+
+.smart-client-money {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.smart-client-money strong {
+  display: block;
+  color: var(--green);
+  font-family: var(--font-display);
+  font-size: 15px;
+}
+
+.smart-client-money span {
+  color: var(--text-2);
+  font-size: 10.5px;
+}
+
+.smart-profit-rates {
+  padding: 20px;
+}
+
+.smart-rates-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.smart-rate-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.smart-rate-field > span {
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.smart-rate-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.smart-rate-input > span {
+  color: var(--green);
+  font-weight: 800;
+}
+
+.smart-rate-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.smart-profit-note {
+  border: 1px solid rgba(34,211,238,.18);
+  background: rgba(34,211,238,.055);
+  color: var(--text-1);
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.smart-profit-note strong {
+  color: var(--cyan);
+}
+
+@media (max-width: 1100px) {
+  .smart-profit-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .smart-profit-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .smart-profit-hero {
+    flex-direction: column;
+    padding: 18px;
+  }
+
+  .smart-profit-status {
+    white-space: normal;
+  }
+
+  .smart-profit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .smart-profit-card {
+    min-height: 120px;
+  }
+
+  .smart-profit-progress-head,
+  .smart-profit-progress-foot {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .smart-removal-row {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .smart-removal-amount {
+    grid-column: 2;
+    text-align: left;
+  }
+
+  .smart-client-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .smart-client-money {
+    text-align: left;
+  }
+
+  .smart-rate-actions .btn {
+    width: 100%;
+  }
+}
