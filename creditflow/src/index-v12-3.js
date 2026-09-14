@@ -70,6 +70,20 @@ async function enhancedBuild(db,clientId){
     db.prepare(`SELECT * FROM collector_compliance_checks WHERE client_id=? ORDER BY updated_at DESC,id DESC`).bind(clientId).all()
   ]);
 
+  // v12.3.1 guard: Strategy must never be built before the real audit is complete.
+  const activeItems=(items||[]).filter(x=>x.removed_status!=="eliminado");
+  const verifiedIds=new Set((assessments||[]).filter(a=>a.human_verified).map(a=>String(a.credit_item_id)));
+  const audited=activeItems.filter(i=>verifiedIds.has(String(i.id))).length;
+  if(activeItems.length>0 && audited<activeItems.length){
+    return {
+      error:`Auditoría incompleta: ${audited} de ${activeItems.length} ítems revisados. Completa la Auditoría antes de construir la estrategia.`,
+      status:409,
+      audit_required:true,
+      audited,
+      total:activeItems.length
+    };
+  }
+
   await db.prepare(`DELETE FROM strategy_actions WHERE client_id=? AND status IN ('planned','blocked')`).bind(clientId).run();
 
   const groups=new Map();
