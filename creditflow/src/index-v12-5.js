@@ -119,61 +119,39 @@ async function prepare(env,clientId){
  }
 
  if(!rows.length){
-   return {ok:true,engine:"v12.5.1",processed:0,skippedHuman,message:"No había cuentas pendientes de auditoría automática."};
+   return {ok:true,engine:"v12.5.3",processed:0,skippedHuman,message:"No había cuentas pendientes de auditoría automática."};
  }
 
- const placeholders=rows.map(()=>"(?,?,?,?,?,?,?,?,?,?)").join(",");
- const params=rows.flat();
+ const placeholders=rows.map(()=>"(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())").join(",");
+ const params=[];
+ for(const r of rows){
+   params.push(
+     r[0],r[1],r[2],r[3],r[4],
+     false,false,r[5],r[6],r[7],r[8],
+     "",false,true,true,"creditflow_auto_v12_5_3",r[9]
+   );
+ }
 
- // One Supabase RPC call for ALL auto-audit writes. This avoids Cloudflare
- // subrequest exhaustion when a report has many negative accounts.
- const sql=`
- WITH incoming(
-   client_id,credit_item_id,issue_type,accuracy_status,evidence_status,confidence,
-   dispute_basis,evidence_notes,desired_resolution,auto_findings_json
- ) AS (VALUES ${placeholders}),
- updated AS (
-   UPDATE dispute_assessments d SET
-     issue_type=i.issue_type,
-     accuracy_status=i.accuracy_status,
-     evidence_status=i.evidence_status,
-     confidence=i.confidence,
-     dispute_basis=i.dispute_basis,
-     evidence_notes=i.evidence_notes,
-     desired_resolution=i.desired_resolution,
-     auto_assessed=TRUE,
-     auto_ready=TRUE,
-     assessment_source='creditflow_auto_v12_5_1',
-     auto_findings_json=i.auto_findings_json,
-     auto_assessed_at=NOW(),
-     updated_at=NOW()
-   FROM incoming i
-   WHERE d.client_id=i.client_id
-     AND d.credit_item_id=i.credit_item_id
-     AND COALESCE(d.human_verified,FALSE)=FALSE
-   RETURNING d.credit_item_id
- )
- INSERT INTO dispute_assessments(
-   client_id,credit_item_id,issue_type,accuracy_status,evidence_status,
-   consumer_confirmed,identity_theft_confirmed,confidence,dispute_basis,
-   evidence_notes,desired_resolution,recommended_route,human_verified,
-   auto_assessed,auto_ready,assessment_source,auto_findings_json,auto_assessed_at
- )
- SELECT
-   i.client_id,i.credit_item_id,i.issue_type,i.accuracy_status,i.evidence_status,
-   FALSE,FALSE,i.confidence,i.dispute_basis,i.evidence_notes,i.desired_resolution,
-   '',FALSE,TRUE,TRUE,'creditflow_auto_v12_5_1',i.auto_findings_json,NOW()
- FROM incoming i
- WHERE NOT EXISTS(
-   SELECT 1 FROM dispute_assessments d
-   WHERE d.client_id=i.client_id AND d.credit_item_id=i.credit_item_id
- )
- RETURNING credit_item_id
+ // v12.5.3: keep human-reviewed assessments, replace only system-generated/non-human rows.
+ // Two simple SQL operations are more reliable through the Supabase exec_sql RPC
+ // than a writable CTE with UPDATE + INSERT.
+ await db.prepare(`
+   DELETE FROM dispute_assessments
+   WHERE client_id=? AND COALESCE(human_verified,FALSE)=FALSE
+ `).bind(clientId).run();
+
+ const insertSql=`
+   INSERT INTO dispute_assessments(
+     client_id,credit_item_id,issue_type,accuracy_status,evidence_status,
+     consumer_confirmed,identity_theft_confirmed,confidence,dispute_basis,
+     evidence_notes,desired_resolution,recommended_route,human_verified,
+     auto_assessed,auto_ready,assessment_source,auto_findings_json,auto_assessed_at
+   ) VALUES ${placeholders}
  `;
- await db.prepare(sql).bind(params).run();
+ await db.prepare(insertSql).bind(params).run();
 
  return {
-   ok:true,engine:"v12.5.1",processed:rows.length,skippedHuman,
+   ok:true,engine:"v12.5.3",processed:rows.length,skippedHuman,
    message:"Auditoría automática completada. Strategy Engine puede ejecutarse en el siguiente paso."
  };
 }
@@ -184,7 +162,7 @@ export default{async fetch(request,env,ctx){
  if(m==="POST"&&match){
    if(!(await auth(request,env,ctx)))return out({error:"No autorizado"},401);
    try{return out(await prepare(env,Number(match[1])))}
-   catch(e){return out({error:"Auto Audit Engine v12.5.1 falló",detail:String(e?.message||e)},500)}
+   catch(e){return out({error:"Auto Audit Engine v12.5.3 falló",detail:String(e?.message||e)},500)}
  }
  return v123.fetch(request,env,ctx);
 }};
