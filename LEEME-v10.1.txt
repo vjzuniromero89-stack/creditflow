@@ -1,0 +1,29 @@
+CREDITFLOW v10.1 — SUBREQUEST HOTFIX
+====================================
+
+EL PROBLEMA
+-----------
+v10 estaba ejecutando un chequeo /api/auth/status adicional para CADA llamada API.
+Como CreditFlow ya tiene varios wrappers (v8 -> v9 -> v9.1 -> v10), ese chequeo
+duplicaba llamadas hacia Supabase y Cloudflare terminaba mostrando:
+
+Too many subrequests by single Worker invocation
+
+LA CORRECCION
+-------------
+- /api/auth/* va directamente al worker base.
+- v10 ya NO vuelve a autenticar endpoints que pertenecen a versiones anteriores.
+- Solo endpoints propios de Case Intelligence hacen el chequeo v10.
+- El importador de reportes deja que la capa inferior haga su autenticacion normal.
+- No se cambia ningun dato ni tabla de Supabase.
+
+EN GITHUB
+---------
+REEMPLAZA:
+1. creditflow/wrangler.jsonc
+
+AGREGA:
+2. creditflow/src/index-v10-1.js
+
+No reemplaces index-v10.js; déjalo como historial.
+Después espera el deploy y haz Ctrl+F5.
