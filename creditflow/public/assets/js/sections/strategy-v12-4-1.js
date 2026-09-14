@@ -17,6 +17,37 @@ function ensureStyle(){
 export async function renderProfessionalStrategyV1241(container,clientId){
  await renderBaseStrategy(container,clientId);
  ensureStyle();
+
+ // v12.8 visual normalization: automatic assessments are completed audits,
+ // not "Revisión pendiente".
+ try{
+   const uiState=await api.get(`/strategy/client/${clientId}`);
+   const cards=[...container.querySelectorAll(".cf9-item-card")];
+   (uiState.items||[]).forEach((item,idx)=>{
+     const card=cards[idx];
+     if(!card)return;
+     if(item.assessment?.auto_ready&&!item.assessment?.human_verified){
+       const badge=card.querySelector(".cf9-status");
+       if(badge){badge.textContent="Auditado por sistema";badge.className="cf9-status ready";}
+       const diag=card.querySelector(".cf9-diagnosis");
+       if(diag && item.assessment.accuracy_status==="unknown"){
+         const boxes=diag.querySelectorAll("div");
+         if(boxes[0]?.querySelector("strong"))boxes[0].querySelector("strong").textContent="Sin inconsistencia detectada";
+         if(boxes[1]?.querySelector("strong"))boxes[1].querySelector("strong").textContent="Auto Audit";
+         if(boxes[2]?.querySelector("strong"))boxes[2].querySelector("strong").textContent="Comparación del reporte";
+       }
+     }
+     card.querySelectorAll(".cf9-action-row").forEach(row=>{
+       const txt=row.textContent||"";
+       if(txt.includes("no_factual_dispute")){
+         const strong=row.querySelector("strong");if(strong)strong.textContent="Sin disputa factual";
+       }
+       if(txt.includes("grouped_with_primary")){
+         const strong=row.querySelector("strong");if(strong)strong.textContent="Cuenta consolidada";
+       }
+     });
+   });
+ }catch{}
  let state;try{state=await api.get(`/strategy/client/${clientId}`)}catch{return}
  const active=(state.items||[]).filter(x=>x.removed_status!=="eliminado");
  const eligible=active.filter(x=>x.assessment?.human_verified||x.assessment?.auto_ready).length;
