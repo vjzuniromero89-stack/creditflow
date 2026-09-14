@@ -21,15 +21,30 @@ export const AppState = {
   uspsConfigured: false,
 };
 
-const NAV = [
-  { key: "dashboard", hash: "#/dashboard", label: "Dashboard", icon: "dashboard" },
-  { key: "clientes", hash: "#/clientes", label: "Clientes", icon: "users" },
-  { key: "usuarios", hash: "#/usuarios", label: "Usuarios", icon: "link" },
-  { key: "ganancias", hash: "#/ganancias", label: "Ganancias", icon: "dollar" },
-  { key: "plantillas", hash: "#/plantillas", label: "Plantillas", icon: "file" },
-  { key: "cartas", hash: "#/cartas", label: "Cartas", icon: "mail" },
-  { key: "envios", hash: "#/envios", label: "Envíos certificados", icon: "send" },
-  { key: "ajustes", hash: "#/ajustes", label: "Ajustes", icon: "settings" },
+const NAV_GROUPS = [
+  {
+    label: "Operación",
+    items: [
+      { key: "dashboard", hash: "#/dashboard", label: "Dashboard", icon: "dashboard" },
+      { key: "clientes", hash: "#/clientes", label: "Clientes", icon: "users" },
+      { key: "ganancias", hash: "#/ganancias", label: "Ganancias", icon: "dollar" },
+    ],
+  },
+  {
+    label: "Trabajo",
+    items: [
+      { key: "cartas", hash: "#/cartas", label: "Cartas", icon: "mail" },
+      { key: "envios", hash: "#/envios", label: "Envíos certificados", icon: "send" },
+      { key: "plantillas", hash: "#/plantillas", label: "Plantillas", icon: "file" },
+    ],
+  },
+  {
+    label: "Administración",
+    items: [
+      { key: "usuarios", hash: "#/usuarios", label: "Usuarios portal", icon: "link" },
+      { key: "ajustes", hash: "#/ajustes", label: "Ajustes", icon: "settings" },
+    ],
+  },
 ];
 
 async function boot() {
@@ -56,15 +71,26 @@ async function boot() {
 
 function renderShell() {
   root.innerHTML = `
-    <div class="app-shell">
-      <aside class="sidebar" id="sidebar">
-        <div class="sidebar-brand">
-          <span class="mark">⚡</span>
-          <span class="name">CreditFlow</span>
+    <div class="app-shell cf-shell">
+      <aside class="sidebar cf-sidebar" id="sidebar">
+        <div class="cf-brand">
+          <div class="cf-brand-mark">CF</div>
+          <div>
+            <div class="cf-brand-name">CreditFlow</div>
+            <div class="cf-brand-sub">Credit Repair OS</div>
+          </div>
         </div>
-        <nav id="nav-groups"></nav>
-        <div class="sidebar-foot">
-          <div class="user-chip">
+
+        <div class="cf-nav-scroll">
+          <nav id="nav-groups"></nav>
+        </div>
+
+        <div class="sidebar-foot cf-sidebar-foot">
+          <div class="cf-system-status">
+            <span class="cf-status-dot"></span>
+            <span>Automatización activa</span>
+          </div>
+          <div class="user-chip cf-user-chip">
             <div class="user-avatar">${initials(AppState.user.full_name || AppState.user.username)}</div>
             <div class="user-meta">
               <div class="u-name">${AppState.user.full_name || AppState.user.username}</div>
@@ -74,26 +100,47 @@ function renderShell() {
           </div>
         </div>
       </aside>
-      <div class="main-area">
-        <div class="topbar">
-          <button class="hamburger" id="hamburger">${icon("chevronDown")}</button>
-          <div>
-            <h1 id="topbar-title">CreditFlow</h1>
-            <div class="sub" id="topbar-sub"></div>
+
+      <div class="main-area cf-main">
+        <header class="topbar cf-topbar">
+          <div class="cf-topbar-left">
+            <button class="hamburger cf-hamburger" id="hamburger">${icon("chevronDown")}</button>
+            <div>
+              <div class="cf-breadcrumb" id="topbar-breadcrumb">CreditFlow</div>
+              <h1 id="topbar-title">CreditFlow</h1>
+              <div class="sub" id="topbar-sub"></div>
+            </div>
           </div>
-        </div>
-        <div class="content" id="content"></div>
+          <div class="cf-topbar-right">
+            <div class="cf-health-chip">
+              <span class="cf-status-dot"></span>
+              Sistema operativo
+            </div>
+          </div>
+        </header>
+
+        <main class="content cf-content" id="content"></main>
       </div>
     </div>
   `;
 
   const navGroups = document.getElementById("nav-groups");
-  navGroups.innerHTML = `
-    <div class="nav-group">
-      <div class="nav-label">Menú</div>
-      ${NAV.map((n) => `<a class="nav-link" data-key="${n.key}" href="${n.hash}">${icon(n.icon)}<span>${n.label}</span></a>`).join("")}
-    </div>
-  `;
+  navGroups.innerHTML = NAV_GROUPS.map(
+    (group) => `
+      <div class="nav-group cf-nav-group">
+        <div class="nav-label cf-nav-label">${group.label}</div>
+        ${group.items
+          .map(
+            (n) =>
+              `<a class="nav-link cf-nav-link" data-key="${n.key}" href="${n.hash}">
+                <span class="cf-nav-icon">${icon(n.icon)}</span>
+                <span>${n.label}</span>
+              </a>`
+          )
+          .join("")}
+      </div>
+    `
+  ).join("");
 
   document.getElementById("logout-btn").addEventListener("click", async () => {
     try {
@@ -116,9 +163,11 @@ function setActiveNav(key) {
   document.querySelectorAll(".nav-link").forEach((a) => a.classList.toggle("active", a.dataset.key === key));
 }
 
-function setTitle(title, sub) {
+function setTitle(title, sub, breadcrumb = "CreditFlow") {
   document.getElementById("topbar-title").textContent = title;
   document.getElementById("topbar-sub").textContent = sub || "";
+  const bc = document.getElementById("topbar-breadcrumb");
+  if (bc) bc.textContent = breadcrumb;
 }
 
 async function route() {
@@ -128,6 +177,7 @@ async function route() {
   const base = parts[0] || "dashboard";
   const id = parts[1];
 
+  content.className = `content cf-content view-${base}${id ? " view-detail" : ""}`;
   content.classList.remove("view-fade");
   void content.offsetWidth;
   content.classList.add("view-fade");
@@ -136,59 +186,68 @@ async function route() {
     switch (base) {
       case "dashboard":
         setActiveNav("dashboard");
-        setTitle("Dashboard", "Resumen general de tu operación");
+        setTitle("Dashboard", "Resumen general de tu operación", "Operación");
         await renderDashboard(content);
         break;
+
       case "clientes":
         setActiveNav("clientes");
         if (id) {
-          setTitle("Cliente", "Perfil, cartas y actividad");
+          setTitle("Expediente del cliente", "Automatización, documentos, reporte, estrategia y seguimiento", "Operación / Clientes");
           await renderClientDetail(content, id);
         } else {
-          setTitle("Clientes", "Administra a tus clientes de reparación de crédito");
+          setTitle("Clientes", "Gestiona todos los expedientes y su progreso", "Operación");
           await renderClientsList(content);
         }
         break;
+
       case "usuarios":
         setActiveNav("usuarios");
-        setTitle("Usuarios", "Accesos al Portal del Cliente — usuario y contraseña de cada cliente");
+        setTitle("Usuarios del portal", "Accesos privados para tus clientes", "Administración");
         await renderPortalUsers(content);
         break;
+
       case "ganancias":
         setActiveNav("ganancias");
-        setTitle("Ganancias", "Cuánto ganarías si se borran los ítems pendientes, y cuánto ya es ganancia real");
+        setTitle("Ganancias", "Remociones confirmadas, por cobrar y potencial", "Operación");
         await renderEarningsDashboard(content);
         break;
+
       case "plantillas":
         setActiveNav("plantillas");
-        setTitle("Plantillas de cartas", "La biblioteca de cartas que usarás para generar disputas");
+        setTitle("Plantillas", "Biblioteca central de estrategias y cartas", "Trabajo");
         await renderTemplates(content);
         break;
+
       case "cartas":
         setActiveNav("cartas");
         if (id === "nueva") {
-          setTitle("Nueva carta", "Elige un cliente y una plantilla para generar la carta");
+          setTitle("Nueva carta", "Prepara una carta para un cliente", "Trabajo / Cartas");
           await renderNewLetter(content);
         } else if (id) {
-          setTitle("Carta", "Editar, imprimir y dar seguimiento al proceso");
+          setTitle("Carta", "Revisión, edición, impresión y seguimiento", "Trabajo / Cartas");
           await renderLetterDetail(content, id);
         } else {
-          setTitle("Cartas", "Todas las cartas creadas y su estado");
+          setTitle("Cartas", "Borradores, listas, enviadas y completadas", "Trabajo");
           await renderLettersList(content);
         }
         break;
+
       case "envios":
         setActiveNav("envios");
-        setTitle("Envíos certificados", "Envía por certifiedmaillabels.com y rastrea la entrega");
+        setTitle("Envíos certificados", "Lotes, tracking y estado de entrega", "Trabajo");
         await renderMailings(content);
         break;
+
       case "ajustes":
         setActiveNav("ajustes");
-        setTitle("Ajustes", "Tu cuenta, tu equipo y la configuración de rastreo");
+        setTitle("Ajustes", "Cuenta, equipo, seguridad e integraciones", "Administración");
         await renderSettings(content);
         break;
+
       default:
         setActiveNav("dashboard");
+        setTitle("Dashboard", "Resumen general de tu operación", "Operación");
         await renderDashboard(content);
     }
   } catch (e) {
@@ -196,7 +255,10 @@ async function route() {
       boot();
       return;
     }
-    content.innerHTML = `<div class="card"><div class="auth-error">Ocurrió un error: ${e.message}</div></div>`;
+    content.innerHTML = `
+      <div class="card cf-error-card">
+        <div class="auth-error">Ocurrió un error: ${e.message}</div>
+      </div>`;
     toast(e.message, "error");
   }
 }
