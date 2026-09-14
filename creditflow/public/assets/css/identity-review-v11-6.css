@@ -277,3 +277,33 @@
   color:#f2bd62 !important;
   font-weight:600 !important;
 }
+
+
+/* v11.6.6 — compact identity typography */
+.cf8-workflow .cf1162-review{padding:20px !important}
+.cf8-workflow .cf1162-head h3{font-size:20px !important}
+.cf8-workflow .cf1162-head p{font-size:13px !important}
+.cf8-workflow .cf1162-data-card{
+  min-height:88px !important;
+  padding:13px 14px !important;
+  grid-template-columns:40px minmax(0,1fr) !important;
+  gap:11px !important;
+}
+.cf8-workflow .cf1162-icon{
+  width:40px !important;
+  height:40px !important;
+  font-size:13px !important;
+}
+.cf8-workflow .cf1162-data-card span{
+  margin-bottom:5px !important;
+  font-size:11px !important;
+}
+.cf8-workflow .cf1162-data-card strong{
+  font-size:13px !important;
+  line-height:1.35 !important;
+}
+.cf8-workflow .cf1165-address em{
+  font-size:12px !important;
+}
+.cf8-workflow .cf1162-address-head h4{font-size:15px !important}
+.cf8-workflow .cf1162-address-head p{font-size:12px !important}
