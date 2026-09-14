@@ -1,10 +1,13 @@
 /* =====================================================================
    db-shim.js — Adaptador D1 -> Supabase/Postgres
-   CreditFlow v6.1: añade retry/backoff para errores temporales de
-   Supabase/PostgREST (429, 502, 503, 504) sin cambiar la API existente.
+   CreditFlow v7
+   - Retry/backoff para errores temporales.
+   - DDL (CREATE/ALTER) usa RPC exec_ddl separado.
+   - SELECT/INSERT/UPDATE/DELETE usa exec_sql.
    ===================================================================== */
 
 const DML_WITHOUT_RETURNING = /^\s*(INSERT|UPDATE|DELETE)\b(?![\s\S]*\bRETURNING\b)/i;
+const DDL = /^\s*(CREATE|ALTER)\b/i;
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 const MAX_ATTEMPTS = 4;
 const BASE_DELAY_MS = 350;
@@ -22,8 +25,10 @@ function retryDelay(attempt, resp) {
   if (Number.isFinite(retryAfter) && retryAfter > 0) {
     return Math.min(retryAfter * 1000, 5000);
   }
-  // 350ms, 700ms, 1400ms (+ pequeño jitter)
-  return Math.min(BASE_DELAY_MS * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 120), 3000);
+  return Math.min(
+    BASE_DELAY_MS * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 120),
+    3000
+  );
 }
 
 class D1ShimStatement {
@@ -80,7 +85,9 @@ class SupabaseD1Shim {
     if (!supabaseUrl || !supabaseKey) {
       throw new Error("SupabaseD1Shim: faltan SUPABASE_URL o SUPABASE_SECRET_KEY.");
     }
-    this._rpcUrl = `${supabaseUrl.replace(/\/+$/, "")}/rest/v1/rpc/exec_sql`;
+    const base = supabaseUrl.replace(/\/+$/, "");
+    this._rpcSqlUrl = `${base}/rest/v1/rpc/exec_sql`;
+    this._rpcDdlUrl = `${base}/rest/v1/rpc/exec_ddl`;
     this._apiKey = supabaseKey;
   }
 
@@ -94,21 +101,20 @@ class SupabaseD1Shim {
     return out;
   }
 
-  async execSql(sql, params) {
+  async _postRpc(url, body, label) {
     let lastError = null;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       let resp;
-
       try {
-        resp = await fetch(this._rpcUrl, {
+        resp = await fetch(url, {
           method: "POST",
           headers: {
             apikey: this._apiKey,
             Authorization: `Bearer ${this._apiKey}`,
             "content-type": "application/json",
           },
-          body: JSON.stringify({ query: sql, params: params ?? [] }),
+          body: JSON.stringify(body),
         });
       } catch (err) {
         lastError = err;
@@ -117,7 +123,7 @@ class SupabaseD1Shim {
           continue;
         }
         throw new Error(
-          `Supabase no respondió después de ${MAX_ATTEMPTS} intentos: ${err?.message || String(err)}`
+          `${label} no respondió después de ${MAX_ATTEMPTS} intentos: ${err?.message || String(err)}`
         );
       }
 
@@ -127,9 +133,7 @@ class SupabaseD1Shim {
       }
 
       const text = await resp.text().catch(() => "");
-      lastError = new Error(
-        `Supabase exec_sql falló (HTTP ${resp.status}): ${text.slice(0, 500)}`
-      );
+      lastError = new Error(`${label} falló (HTTP ${resp.status}): ${text.slice(0, 500)}`);
 
       if (RETRYABLE_STATUS.has(resp.status) && attempt < MAX_ATTEMPTS) {
         await sleep(retryDelay(attempt, resp));
@@ -139,7 +143,21 @@ class SupabaseD1Shim {
       throw lastError;
     }
 
-    throw lastError || new Error("Supabase exec_sql falló sin respuesta.");
+    throw lastError || new Error(`${label} falló sin respuesta.`);
+  }
+
+  async execSql(sql, params) {
+    if (DDL.test(sql)) {
+      if ((params || []).length) {
+        throw new Error("Las operaciones DDL no aceptan parámetros bind en CreditFlow.");
+      }
+      return this._postRpc(this._rpcDdlUrl, { query: sql }, "Supabase exec_ddl");
+    }
+    return this._postRpc(
+      this._rpcSqlUrl,
+      { query: sql, params: params ?? [] },
+      "Supabase exec_sql"
+    );
   }
 }
 
