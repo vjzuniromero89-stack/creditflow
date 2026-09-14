@@ -62,23 +62,31 @@ function isCollectorItem(item){
         s.includes("collection")||s.includes("charge off")||s.includes("charge-off")||
         n.includes("collection")||n.includes("recovery")||n.includes("receivable");
 }
-function collectorComplianceCard(group){
+function collectorComplianceCard(group,checks=[]){
  const item=group[0];
  if(!isCollectorItem(item))return "";
- const state="Maryland";
- const source="Maryland Office of Financial Regulation / NMLS";
+ const check=checks.find(c=>String(c.credit_item_id||"")===String(item.id))||
+             checks.find(c=>norm(c.collector_name)===norm(item.creditor_name));
+ const status=check?.license_status||"pending_review";
+ const statusMap={
+  active:["✓","Licencia activa"],inactive:["✕","Inactiva / expirada"],
+  not_found:["⚠","No localizada"],not_required:["—","No requerida"],
+  pending_review:["⚠","Pendiente de verificación oficial"]
+ };
+ const st=statusMap[status]||["?","Revisión manual"];
  return `<section class="cf119-compliance">
-   <div class="cf119-title"><div><span>COLLECTOR COMPLIANCE</span><strong>${escapeHtml(item.creditor_name||"Collector")}</strong></div><b class="cf119-review">REVISIÓN REQUERIDA</b></div>
+   <div class="cf119-title"><div><span>COLLECTOR COMPLIANCE</span><strong>${escapeHtml(item.creditor_name||"Collector")}</strong></div><b class="cf119-review">${escapeHtml(st[0]+" "+st[1])}</b></div>
    <div class="cf119-grid">
-    <div><small>Jurisdicción de revisión</small><strong>${state}</strong></div>
-    <div><small>Tipo</small><strong>Collection / debt collector</strong></div>
-    <div><small>Licencia</small><strong>⚠ Pendiente de verificación oficial</strong></div>
-    <div><small>Fuente prevista</small><strong>${source}</strong></div>
+    <div><small>Jurisdicción</small><strong>${escapeHtml(check?.jurisdiction||"MD")}</strong></div>
+    <div><small>NMLS ID</small><strong>${escapeHtml(check?.nmls_id||"Pendiente")}</strong></div>
+    <div><small>Licencia</small><strong>${escapeHtml(check?.license_number||st[1])}</strong></div>
+    <div><small>Verificada</small><strong>${escapeHtml(check?.source_checked_at?new Date(check.source_checked_at).toLocaleDateString():"Pendiente")}</strong></div>
    </div>
-   <p>CreditFlow no presume que “no encontrada” significa “sin licencia”. La licencia debe verificarse por nombre legal/NMLS y vigencia antes de usar el hallazgo.</p>
+   ${check?.source_title?`<div class="cf121-source"><strong>Fuente:</strong> ${escapeHtml(check.source_title)}</div>`:""}
+   ${check?.reviewer_notes?`<p>${escapeHtml(check.reviewer_notes)}</p>`:`<p>Verifica nombre legal, NMLS/licencia y vigencia antes de utilizar este hallazgo en una estrategia.</p>`}
+   <button class="btn btn-ghost btn-sm cf121-review-btn" data-compliance="${item.id}">${check?"Editar verificación":"Registrar verificación"}</button>
   </section>`;
 }
-
 function smartGroups(items){
  const map=new Map();
  for(const item of items){
@@ -110,7 +118,7 @@ function compareGroup(group){
  }
  return findings;
 }
-function groupCard(group){
+function groupCard(group,checks=[]){
  const first=group[0],findings=compareGroup(group);
  const bureauSet=[...new Set(group.map(x=>bureauName(x.bureaus)))];
  return `<article class="cf118-group ${findings.length?"has-findings":"no-findings"}">
@@ -120,7 +128,7 @@ function groupCard(group){
     <b>${findings.length?`⚠ ${findings.length} inconsistencia(s)`:"✓ Sin diferencias detectadas"}</b>
    </div>
    ${findings.length?`<div class="cf118-findings">${findings.map(f=>`<div><strong>${escapeHtml(f.label)}</strong><span>${f.values.map(v=>`${escapeHtml(v.bureau)}: <b>${escapeHtml(String(v.value))}</b>`).join(" · ")}</span></div>`:""}
-   ${collectorComplianceCard(group)}
+   ${collectorComplianceCard(group,checks)}
  </article>`;
 }
 
@@ -178,10 +186,47 @@ function assessmentModal(item,onSaved){
  };
 }
 
+
+function complianceModal(item,existing,clientId,onSaved){
+ const c=existing||{};
+ const {close,body}=openModal({title:`Collector Compliance — ${item.creditor_name||"Collector"}`,wide:true,
+ bodyHtml:`<form id="cf121-form" class="cf117-form">
+ <div class="cf121-warning"><strong>Verificación regulatoria</strong><span>No marques “No localizada” o “Inactiva” sin revisar una fuente oficial.</span></div>
+ <div class="form-grid">
+  <div class="field"><label>Nombre legal</label><input name="legal_name" value="${escapeHtml(c.legal_name||item.creditor_name||"")}"></div>
+  <div class="field"><label>Jurisdicción</label><input name="jurisdiction" value="${escapeHtml(c.jurisdiction||"MD")}"></div>
+  <div class="field"><label>NMLS ID</label><input name="nmls_id" value="${escapeHtml(c.nmls_id||"")}"></div>
+  <div class="field"><label>Número de licencia</label><input name="license_number" value="${escapeHtml(c.license_number||"")}"></div>
+  <div class="field"><label>Estado de licencia *</label><select name="license_status">
+   ${[["pending_review","Pendiente"],["active","Activa"],["inactive","Inactiva / expirada"],["not_found","No localizada"],["not_required","No requerida"]].map(([v,l])=>`<option value="${v}" ${c.license_status===v?"selected":""}>${l}</option>`).join("")}
+  </select></div>
+  <div class="field"><label>¿Licencia requerida?</label><select name="license_required_status">
+   ${[["review_required","Requiere revisión"],["required","Sí"],["not_required","No"],["unclear","No está claro"]].map(([v,l])=>`<option value="${v}" ${c.license_required_status===v?"selected":""}>${l}</option>`).join("")}
+  </select></div>
+  <div class="field" style="grid-column:1/-1"><label>Fuente oficial / título</label><input name="source_title" value="${escapeHtml(c.source_title||"Maryland Office of Financial Regulation / State Collection Agency Licensing Board")}"></div>
+  <div class="field" style="grid-column:1/-1"><label>URL de la fuente</label><input name="source_url" value="${escapeHtml(c.source_url||"")}"></div>
+  <div class="field" style="grid-column:1/-1"><label>Notas del revisor</label><textarea name="reviewer_notes" rows="3">${escapeHtml(c.reviewer_notes||"")}</textarea></div>
+ </div>
+ <label class="cf121-human"><input type="checkbox" name="human_verified" ${c.human_verified?"checked":""}> Confirmo que revisé una fuente oficial.</label>
+ <div class="form-actions"><button type="button" class="btn btn-ghost" data-close>Cancelar</button><button class="btn btn-primary">Guardar verificación</button></div>
+ </form>`});
+ body.querySelector("[data-close]").onclick=close;
+ body.querySelector("#cf121-form").onsubmit=async e=>{
+  e.preventDefault();const fd=new FormData(e.currentTarget),p=Object.fromEntries(fd.entries());
+  p.credit_item_id=item.id;p.collector_name=item.creditor_name;p.human_verified=fd.get("human_verified")==="on";
+  if(["inactive","not_found"].includes(p.license_status)&&!p.human_verified)return toast("Confirma la revisión de una fuente oficial antes de guardar ese resultado.","error");
+  if(p.human_verified)p.source_checked_at=new Date().toISOString();
+  try{await api.post(`/collector-compliance/client/${clientId}`,p);close();toast("Verificación del collector guardada","success");await onSaved()}
+  catch(err){toast(err.message,"error")}
+ };
+}
+
 export async function renderRealAuditV117(container,clientId,{onComplete}={}){
  container.innerHTML=`<div class="card">Cargando auditoría real…</div>`;
  let state;
  try{state=await api.get(`/strategy/client/${clientId}`)}catch(e){container.innerHTML=`<div class="auth-error">${escapeHtml(e.message)}</div>`;return}
+ let complianceChecks=[];
+ try{complianceChecks=(await api.get(`/collector-compliance/client/${clientId}`)).checks||[]}catch(e){console.warn("Collector compliance:",e)}
  const items=(state.items||[]).filter(x=>x.removed_status!=="eliminado");
  const done=items.filter(reviewed).length,total=items.length,pct=total?Math.round(done/total*100):0;
  container.innerHTML=`<section class="cf117-audit">
@@ -190,7 +235,7 @@ export async function renderRealAuditV117(container,clientId,{onComplete}={}){
   <div class="cf117-notice"><strong>No se disputará todo automáticamente.</strong><span>Cada decisión debe tener una base factual. Las cuentas correctas se marcan “Correcto / no disputar”.</span></div>
   <section class="cf118-smart">
    <div class="cf118-smart-head"><div><strong>Comparación automática de los 3 burós</strong><span>Agrupa la misma cuenta y señala diferencias visibles en los datos importados. Una diferencia es una señal para revisar, no una razón automática para disputar.</span></div></div>
-   <div class="cf118-groups">${smartGroups(items).map(groupCard).join("")}</div>
+   <div class="cf118-groups">${smartGroups(items).map(g=>groupCard(g,complianceChecks)).join("")}</div>
   </section>
   <div class="cf117-list">
    ${items.map((item,i)=>`<article class="cf117-item ${reviewed(item)?"is-done":""}">
@@ -209,6 +254,14 @@ export async function renderRealAuditV117(container,clientId,{onComplete}={}){
  container.querySelectorAll("[data-audit]").forEach(b=>b.onclick=()=>{
   const item=items.find(x=>String(x.id)===String(b.dataset.audit));
   assessmentModal(item,()=>renderRealAuditV117(container,clientId,{onComplete}));
+ });
+
+
+ container.querySelectorAll("[data-compliance]").forEach(b=>b.onclick=()=>{
+  const item=items.find(x=>String(x.id)===String(b.dataset.compliance));
+  const existing=complianceChecks.find(c=>String(c.credit_item_id||"")===String(item.id))||
+                 complianceChecks.find(c=>norm(c.collector_name)===norm(item.creditor_name));
+  complianceModal(item,existing,clientId,()=>renderRealAuditV117(container,clientId,{onComplete}));
  });
 
  const auditAll=container.querySelector("#cf118-audit-all");
