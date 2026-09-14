@@ -1,0 +1,16 @@
+CREDITFLOW FIX SUPABASE v3.1
+
+Reemplaza solamente:
+
+creditflow/wrangler.jsonc
+
+No borres index-auto.js.
+No cambies src/index.js.
+
+Este archivo restaura la URL real de Supabase y mantiene activo el backend automático v3.
+
+Después de subir:
+1. Espera el deploy de Cloudflare.
+2. Recarga CreditFlow con Ctrl+F5.
+3. Abre un cliente.
+
