@@ -5,10 +5,9 @@ import { initials } from "./utils.js";
 
 import { renderLoginOrSetup } from "./sections/auth-screens.js";
 import { renderDashboardV7 } from "./sections/dashboard-v7.js";
-import { renderClientsList, renderClientDetail } from "./sections/clients-v8.js";
+import { renderClientsList, renderClientDetail } from "./sections/clients-v9.js";
 import { renderEarningsV7 } from "./sections/earnings-v7.js";
 import {
-  renderTemplatesV7,
   renderLettersListV7,
   renderLetterDetailV7,
   renderNewLetterV7,
@@ -16,6 +15,7 @@ import {
   renderPortalUsersV7,
   renderSettingsV7,
 } from "./sections/wrappers-v7.js";
+import { renderTemplatesV9 } from "./sections/templates-v9.js";
 import { bootPortal } from "./sections/portal.js";
 
 const root = document.getElementById("root");
@@ -114,7 +114,7 @@ async function route(){
       else{setTitle("Cartas","Borradores, listas, enviadas y resultados","Flujo");await renderLettersListV7(content);}
     }
     else if(base==="envios"){setActive("envios");setTitle("Envíos certificados","Preparación, tracking e historial","Flujo");await renderMailingsV7(content);}
-    else if(base==="plantillas"){setActive("plantillas");setTitle("Estrategia y plantillas","Biblioteca y flujo de disputa","Flujo");await renderTemplatesV7(content);}
+    else if(base==="plantillas"){setActive("plantillas");setTitle("Estrategia y plantillas","Biblioteca y flujo de disputa","Flujo");await renderTemplatesV9(content);}
     else if(base==="usuarios"){setActive("usuarios");setTitle("Portal de clientes","Accesos privados de tus clientes","Administración");await renderPortalUsersV7(content);}
     else if(base==="ajustes"){setActive("ajustes");setTitle("Sistema","Seguridad, equipo e integraciones","Administración");await renderSettingsV7(content);}
     else{location.hash="#/dashboard";}
