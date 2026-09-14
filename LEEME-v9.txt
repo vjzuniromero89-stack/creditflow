@@ -1,0 +1,94 @@
+CREDITFLOW — PROFESSIONAL STRATEGY v9
+====================================
+
+YA HICE EN SUPABASE
+-------------------
+La migración v9 ya fue aplicada.
+NO corras SQL.
+
+Se agregaron:
+- dispute_assessments
+- strategy_actions
+- strategy_runs
+
+No se borraron clientes, ítems, cartas ni historial.
+
+REEMPLAZA EN GITHUB
+-------------------
+1. creditflow/wrangler.jsonc
+2. creditflow/public/index.html
+3. creditflow/public/assets/js/app.js
+
+AGREGA EN GITHUB
+----------------
+4. creditflow/src/index-v9.js
+5. creditflow/public/assets/js/sections/clients-v9.js
+6. creditflow/public/assets/js/sections/strategy-v9.js
+7. creditflow/public/assets/js/sections/templates-v9.js
+8. creditflow/public/assets/css/strategy-v9.css
+
+NO CAMBIES
+----------
+- index.js
+- index-auto.js
+- index-v7.js
+- index-v8.js
+- db-shim.js
+- clients-v7.js
+- clients-v8.js
+- collections-v7.js
+- repair-workflow-v8.js
+
+QUÉ HACE v9
+-----------
+1. Cada negativo tiene DIAGNÓSTICO ESTRUCTURADO:
+   - exactitud
+   - tipo de error
+   - evidencia
+   - confirmación del consumidor
+   - confidence
+   - base factual
+   - resolución solicitada
+   - revisión humana
+   - identity theft confirmado por separado
+
+2. CONSTRUIR ESTRATEGIA ya NO usa:
+   Ronda 1 -> esperar -> Ronda 2 -> Ronda 3 automáticamente.
+
+3. El motor decide:
+   - CRA factual dispute
+   - Unauthorized inquiry
+   - Identity theft block
+   - Collector validation review
+   - Direct furnisher dispute
+   - New evidence reinvestigation
+   - Procedure request
+   - Reinsertion challenge
+   - Goodwill
+   - Post-payment correction
+   - No dispute / blocked
+
+4. Instala 13 plantillas profesionales sin duplicarlas.
+
+5. GENERAR BORRADORES:
+   Solo crea cartas para acciones planificadas.
+   Las cartas quedan en BORRADOR.
+   Nada se envía automáticamente.
+
+6. Si falta:
+   - diagnóstico humano
+   - confirmación del consumidor
+   - dirección del furnisher/collector
+   - buró
+   el motor BLOQUEA esa acción en vez de inventar datos.
+
+DESPUÉS DE SUBIR
+----------------
+1. Espera deploy.
+2. Ctrl + F5.
+3. Abre cliente.
+4. Estrategia.
+5. Instala biblioteca profesional.
+6. Diagnostica cada negativo.
+7. Construir estrategia.
+8. Generar borradores.
