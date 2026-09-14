@@ -1,30 +1,29 @@
 /* =====================================================================
-   db-shim.js — Adaptador que hace que Supabase (Postgres) se vea como
-   el binding `env.DB` de Cloudflare D1 (SQLite) que usa el resto del
-   backend (`env.DB.prepare(sql).bind(...args).first()/.all()/.run()`).
-
-   Por qué existe: CreditFlow se migró de D1 a Supabase para que la
-   base de datos quede en la misma cuenta de Supabase que los demás
-   proyectos de Karen (junto a GitHub, Cloudflare y Netlify). En vez de
-   reescribir las ~176 llamadas a env.DB.prepare(...) repartidas por
-   todo index.js, este archivo implementa la misma API que D1 por
-   encima de una función RPC de Postgres (`exec_sql`), así el resto
-   del código no cambia.
-
-   Cómo funciona: cada llamada `.bind(...args).first()/.all()/.run()`
-   termina llamando a la RPC `exec_sql(query text, params jsonb)` en
-   Supabase, que sustituye cada "?" de la query (estilo D1/SQLite) por
-   su valor ya escapado con quote_nullable (nunca concatenación
-   cruda), y devuelve las filas resultantes como jsonb. Para
-   INSERT/UPDATE/DELETE, este shim agrega automáticamente
-   "RETURNING *" si la query no la trae, porque Postgres lo exige para
-   poder leer las filas afectadas (y así calcular meta.last_row_id).
+   db-shim.js — Adaptador D1 -> Supabase/Postgres
+   CreditFlow v6.1: añade retry/backoff para errores temporales de
+   Supabase/PostgREST (429, 502, 503, 504) sin cambiar la API existente.
    ===================================================================== */
 
 const DML_WITHOUT_RETURNING = /^\s*(INSERT|UPDATE|DELETE)\b(?![\s\S]*\bRETURNING\b)/i;
+const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+const MAX_ATTEMPTS = 4;
+const BASE_DELAY_MS = 350;
 
 function needsReturning(sql) {
   return DML_WITHOUT_RETURNING.test(sql);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryDelay(attempt, resp) {
+  const retryAfter = Number(resp?.headers?.get?.("retry-after"));
+  if (Number.isFinite(retryAfter) && retryAfter > 0) {
+    return Math.min(retryAfter * 1000, 5000);
+  }
+  // 350ms, 700ms, 1400ms (+ pequeño jitter)
+  return Math.min(BASE_DELAY_MS * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 120), 3000);
 }
 
 class D1ShimStatement {
@@ -35,7 +34,6 @@ class D1ShimStatement {
   }
 
   bind(...args) {
-    // D1 aplana bind(a, b, c); soportamos también bind([a, b, c]) por si acaso.
     this._params = args.length === 1 && Array.isArray(args[0]) ? args[0] : args;
     return this;
   }
@@ -71,7 +69,6 @@ class D1ShimStatement {
     };
   }
 
-  // Poco usado en el backend actual, pero D1 lo expone: ejecuta y descarta el resultado.
   async raw() {
     const rows = await this._exec();
     return rows.map((r) => Object.values(r));
@@ -91,7 +88,6 @@ class SupabaseD1Shim {
     return new D1ShimStatement(this, sql);
   }
 
-  // Para paridad con D1 (poco usado en este backend).
   async batch(statements) {
     const out = [];
     for (const stmt of statements) out.push(await stmt.run());
@@ -99,22 +95,51 @@ class SupabaseD1Shim {
   }
 
   async execSql(sql, params) {
-    const resp = await fetch(this._rpcUrl, {
-      method: "POST",
-      headers: {
-        apikey: this._apiKey,
-        Authorization: `Bearer ${this._apiKey}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ query: sql, params: params ?? [] }),
-    });
-    if (!resp.ok) {
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      let resp;
+
+      try {
+        resp = await fetch(this._rpcUrl, {
+          method: "POST",
+          headers: {
+            apikey: this._apiKey,
+            Authorization: `Bearer ${this._apiKey}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ query: sql, params: params ?? [] }),
+        });
+      } catch (err) {
+        lastError = err;
+        if (attempt < MAX_ATTEMPTS) {
+          await sleep(retryDelay(attempt));
+          continue;
+        }
+        throw new Error(
+          `Supabase no respondió después de ${MAX_ATTEMPTS} intentos: ${err?.message || String(err)}`
+        );
+      }
+
+      if (resp.ok) {
+        const data = await resp.json();
+        return Array.isArray(data) ? data : [];
+      }
+
       const text = await resp.text().catch(() => "");
-      throw new Error(`Supabase exec_sql falló (HTTP ${resp.status}): ${text.slice(0, 500)}`);
+      lastError = new Error(
+        `Supabase exec_sql falló (HTTP ${resp.status}): ${text.slice(0, 500)}`
+      );
+
+      if (RETRYABLE_STATUS.has(resp.status) && attempt < MAX_ATTEMPTS) {
+        await sleep(retryDelay(attempt, resp));
+        continue;
+      }
+
+      throw lastError;
     }
-    const data = await resp.json();
-    // La RPC devuelve directamente el jsonb array de filas.
-    return Array.isArray(data) ? data : [];
+
+    throw lastError || new Error("Supabase exec_sql falló sin respuesta.");
   }
 }
 
