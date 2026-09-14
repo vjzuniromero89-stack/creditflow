@@ -21,23 +21,19 @@ export async function renderProfessionalStrategyV1241(container,clientId){
  const active=(state.items||[]).filter(x=>x.removed_status!=="eliminado");
  const eligible=active.filter(x=>x.assessment?.human_verified||x.assessment?.auto_ready).length;
  const human=active.filter(x=>x.assessment?.human_verified).length;
- const total=active.length;
- const complete=total>0&&eligible===total;
- const autoCount=eligible-human;
+ const total=active.length,complete=total>0&&eligible===total,autoCount=eligible-human;
 
  const hero=container.querySelector(".cf9-strategy-hero");
  if(!hero)return;
  const gate=document.createElement("div");gate.className="cf125-gate";
  gate.innerHTML=complete
  ? `<div><strong>Auditoría lista para estrategia</strong><span>${human} revisión(es) humana(s) y ${autoCount} auditoría(s) preparadas automáticamente por CreditFlow.</span></div><div class="cf125-actions"><b>${eligible}/${total}</b></div>`
- : `<div><strong>CreditFlow puede preparar la auditoría automáticamente</strong><span>No necesitas revisar las ${total} cuentas una por una. El sistema comparará los burós, clasificará cada cuenta, documentará inconsistencias y construirá la estrategia. No inventará identity theft ni disputará una cuenta solo por ser negativa.</span></div>
+ : `<div><strong>CreditFlow puede preparar la auditoría automáticamente</strong><span>El sistema comparará los burós, clasificará las cuentas y luego construirá la estrategia en un segundo paso automático.</span></div>
     <div class="cf125-actions"><b>${eligible}/${total}</b><button class="btn btn-primary cf125-auto" id="cf125-auto">Automatizar auditoría + estrategia</button></div>`;
  hero.insertAdjacentElement("beforebegin",gate);
 
- const kpi=container.querySelector(".cf9-kpis > div:nth-child(2) span");
- if(kpi)kpi.textContent=String(eligible);
- const kpiLabel=container.querySelector(".cf9-kpis > div:nth-child(2) strong");
- if(kpiLabel)kpiLabel.textContent="Auditados";
+ const kpi=container.querySelector(".cf9-kpis > div:nth-child(2) span");if(kpi)kpi.textContent=String(eligible);
+ const kpiLabel=container.querySelector(".cf9-kpis > div:nth-child(2) strong");if(kpiLabel)kpiLabel.textContent="Auditados";
 
  const build=container.querySelector("#cf9-build-plan");
  if(build&&!complete){build.disabled=true;build.textContent="Auditoría pendiente";}
@@ -51,13 +47,16 @@ export async function renderProfessionalStrategyV1241(container,clientId){
  });
 
  gate.querySelector("#cf125-auto")?.addEventListener("click",async(e)=>{
-   const btn=e.currentTarget;btn.disabled=true;btn.textContent="Analizando las cuentas…";
+   const btn=e.currentTarget;btn.disabled=true;btn.textContent="1/2 Auditando cuentas…";
    try{
-     const r=await api.post(`/automation/client/${clientId}/prepare-strategy`);
-     toast(`${r.created+r.updated} cuenta(s) auditadas; ${r.planned} acción(es) listas; ${r.blocked} en revisión`,"success");
+     const audit=await api.post(`/automation/client/${clientId}/prepare-strategy`);
+     btn.textContent="2/2 Construyendo estrategia…";
+     const buildResult=await api.post(`/strategy/client/${clientId}/build`);
+     toast(`${audit.processed||0} cuenta(s) auditadas; ${buildResult.planned||0} acción(es) listas; ${buildResult.blocked||0} en revisión`,"success");
      await renderProfessionalStrategyV1241(container,clientId);
    }catch(err){
-     toast(err.message||"No se pudo completar la automatización","error");
+     const detail=err?.data?.detail||err?.detail||"";
+     toast(`${err.message||"No se pudo completar la automatización"}${detail?` — ${detail}`:""}`,"error");
      btn.disabled=false;btn.textContent="Automatizar auditoría + estrategia";
    }
  });
