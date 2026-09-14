@@ -1,180 +1,127 @@
 import { api } from "../api.js";
 import { toast } from "../toast.js";
-import { escapeHtml, formatDateTime } from "../utils.js";
+import { escapeHtml } from "../utils.js";
 
 const badge=(t,k="neutral")=>`<span class="pg11-badge ${k}">${escapeHtml(t||"—")}</span>`;
 const kind=s=>/connected|success|processed|delivered|ready/i.test(s||"")?"good":/error|failed|returned/i.test(s||"")?"bad":/submitted|printing|progress/i.test(s||"")?"warn":"neutral";
 
-function groupCard(g){
-  const titles=(g.letters||[]).map(x=>`<li>${escapeHtml(x.title||`Carta #${x.id}`)}</li>`).join("");
-  return `<article class="card" style="padding:18px;display:grid;gap:12px">
+function certifiedCard(g){
+  return `<article class="card" style="padding:18px;display:grid;gap:10px">
     <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap">
-      <div>
-        <div class="pg11-kicker">PAQUETE · RONDA ${g.round_number||1}</div>
-        <h3 style="margin:4px 0">${escapeHtml(g.recipient_name||"Destinatario")}</h3>
-        <p style="margin:0;color:var(--cf7-muted)">${escapeHtml(g.client_name||"")} · <strong>${g.letter_count} carta(s)</strong></p>
-        <small style="display:block;margin-top:5px">${escapeHtml(g.recipient_address||"")}</small>
-      </div>
-      <div style="min-width:280px;display:flex;gap:8px;align-items:center">
-        <select data-group-service="${escapeHtml(g.group_key)}" style="flex:1">
-          <option value="certified_return_receipt">Certified + Return Receipt</option>
-          <option value="certified">Certified Mail</option>
-        </select>
-        <button class="btn btn-primary" data-prepare-group="${escapeHtml(g.group_key)}">Preparar paquete</button>
-      </div>
+      <div><div class="pg11-kicker">CERTIFIED · RONDA ${g.round_number||1}</div>
+      <h3 style="margin:4px 0">${escapeHtml(g.recipient_name||"Buró")}</h3>
+      <p style="margin:0">${escapeHtml(g.client_name||"")} · <strong>${g.letter_count} carta(s) en 1 sobre</strong></p>
+      <small>${escapeHtml(g.recipient_address||"")}</small></div>
+      <button class="btn btn-primary" data-prepare-group="${escapeHtml(g.group_key)}">Preparar Certified</button>
     </div>
-    <details>
-      <summary style="cursor:pointer">${g.letter_count} cartas dentro de este mismo sobre certificado</summary>
-      <ul style="margin:10px 0 0 20px">${titles}</ul>
-    </details>
+  </article>`;
+}
+function stampCard(g){
+  return `<article class="card" style="padding:18px;display:grid;gap:10px">
+    <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap">
+      <div><div class="pg11-kicker">STAMP · CORREO NORMAL · RONDA ${g.round_number||1}</div>
+      <h3 style="margin:4px 0">${escapeHtml(g.recipient_name||"Acreedor / Collector")}</h3>
+      <p style="margin:0">${escapeHtml(g.client_name||"")} · <strong>${g.letter_count} carta(s) en 1 sobre</strong></p>
+      <small>${escapeHtml(g.recipient_address||"")}</small></div>
+      <button class="btn btn-primary" data-stamp-mailed="${escapeHtml(g.group_key)}">Marcar enviado con stamp</button>
+    </div>
+    <details><summary>Ver cartas</summary><ul>${(g.letters||[]).map(x=>`<li>${escapeHtml(x.title||`Carta #${x.id}`)}</li>`).join("")}</ul></details>
   </article>`;
 }
 
 export async function renderMailingsV11(container){
-  container.innerHTML=`<div class="pg11-loading">Cargando PostGrid…</div>`;
-
+  container.innerHTML=`<div class="pg11-loading">Cargando envíos…</div>`;
   let legacy,pack;
   try{
-    [legacy,pack]=await Promise.all([
-      api.get("/postgrid/status"),
-      api.get("/postgrid/package-status")
-    ]);
+    [legacy,pack]=await Promise.all([api.get("/postgrid/status"),api.get("/postgrid/package-status")]);
   }catch(e){
-    container.innerHTML=`<div class="card"><div class="auth-error">No se pudo cargar PostGrid: ${escapeHtml(e.message)}</div></div>`;
-    return;
+    container.innerHTML=`<div class="card"><div class="auth-error">No se pudieron cargar los envíos: ${escapeHtml(e.message)}</div></div>`;return;
   }
 
-  const p=legacy.provider||{},groups=pack.groups||[],packages=pack.packages||[];
-  const totalLetters=pack.ready_letters_count||0;
-  const prepared=packages.filter(x=>x.status==="prepared_test").length;
-  const submitted=packages.filter(x=>x.provider_job_id).length;
-  const tracked=packages.filter(x=>x.tracking_number).length;
-
+  const p=legacy.provider||{},groups=pack.groups||[],stampGroups=pack.stamp_groups||[],packages=pack.packages||[];
   container.innerHTML=`
   <section class="cf7-page-hero pg11-hero">
-    <div>
-      <div class="cf7-eyebrow">POSTGRID CONNECTOR · GROUPED MAIL v13.5.6</div>
-      <h2>Envíos certificados</h2>
-      <p>CreditFlow agrupa todas las cartas del <strong>mismo cliente + destinatario + ronda</strong> dentro de un solo sobre certificado.</p>
-    </div>
-    <div class="pg11-env">TEST SANDBOX</div>
-  </section>
-
-  <section class="pg11-provider card">
-    <div class="pg11-provider-main">
-      <div class="pg11-logo">PG</div>
-      <div><div class="pg11-kicker">Proveedor activo</div><h3>PostGrid Print & Mail API</h3>
-      <p>Clave: ${p.credentials_configured?"configurada en Cloudflare":"no detectada"} · modo TEST.</p></div>
-    </div>
-    <div class="pg11-provider-actions">
-      ${badge(p.connection_status||"sin probar",kind(p.connection_status))}
-      <button class="btn btn-primary" id="pg11-test">Probar conexión</button>
-    </div>
+    <div><div class="cf7-eyebrow">SMART MAIL ROUTER · v13.6.2</div>
+    <h2>Envíos</h2>
+    <p><strong>Burós:</strong> PostGrid Certified. <strong>Acreedores / collectors:</strong> imprimir y enviar con stamp normal.</p></div>
+    <div class="pg11-env">POSTGRID TEST</div>
   </section>
 
   <div class="pg11-kpis">
-    <div class="card"><span>${totalLetters}</span><strong>Cartas listas</strong><small>documentos individuales</small></div>
-    <div class="card"><span>${groups.length}</span><strong>Paquetes por preparar</strong><small>un certified por destinatario</small></div>
-    <div class="card"><span>${prepared}</span><strong>Paquetes preparados</strong><small>listos para sandbox</small></div>
-    <div class="card"><span>${submitted}</span><strong>En PostGrid TEST</strong><small>${tracked} con tracking</small></div>
+    <div class="card"><span>${pack.certified_letters_count||0}</span><strong>Cartas a burós</strong><small>Certified</small></div>
+    <div class="card"><span>${groups.length}</span><strong>Certified por preparar</strong><small>agrupados por buró</small></div>
+    <div class="card"><span>${pack.stamp_letters_count||0}</span><strong>Cartas directas</strong><small>con stamp</small></div>
+    <div class="card"><span>${stampGroups.length}</span><strong>Sobres con stamp</strong><small>sin PostGrid</small></div>
   </div>
 
   <section class="card pg11-section">
-    <div class="pg11-section-head">
-      <div><div class="pg11-kicker">PASO 1</div><h3>Paquetes certificados agrupados</h3>
-      <p>Varias cartas al mismo buró viajan juntas. Ejemplo: 7 cartas a TransUnion = 1 Certified Mail.</p></div>
-      ${groups.length>1?`<button class="btn btn-primary" id="pg11-prepare-all">Preparar los ${groups.length} paquetes</button>`:""}
-    </div>
-    <div id="pg11-groups" style="display:grid;gap:12px"></div>
+    <div class="pg11-section-head"><div><div class="pg11-kicker">COLA A · BURÓS</div>
+    <h3>Certified Mail</h3><p>Experian, Equifax y TransUnion. Varias cartas al mismo buró se agrupan en un solo Certified.</p></div></div>
+    <div id="pg11-certified" style="display:grid;gap:12px"></div>
   </section>
 
   <section class="card pg11-section">
-    <div class="pg11-section-head">
-      <div><div class="pg11-kicker">PASO 2</div><h3>Cola de paquetes PostGrid</h3>
-      <p>Cada fila representa <strong>un solo sobre certificado</strong>, aunque contenga varias cartas.</p></div>
-    </div>
+    <div class="pg11-section-head"><div><div class="pg11-kicker">COLA B · ACREEDORES / COLLECTORS</div>
+    <h3>Correo normal con stamp</h3><p>Estas cartas <strong>no entran a PostGrid</strong>. Se imprimen, se colocan en sobre y se envían con estampilla normal.</p></div></div>
+    <div id="pg11-stamps" style="display:grid;gap:12px"></div>
+  </section>
+
+  <section class="card pg11-section">
+    <div class="pg11-section-head"><div><div class="pg11-kicker">POSTGRID TEST</div><h3>Paquetes certificados preparados</h3></div>
+    <button class="btn btn-primary" id="pg11-test">Probar conexión</button></div>
     <div id="pg11-packages"></div>
   </section>
 
-  <section class="pg11-safety">
-    <strong>Ahorro activo:</strong> CreditFlow no crea un Certified Mail por cada carta. Agrupa por cliente, destinatario y ronda.
-    En esta versión PostGrid continúa en TEST y no envía correo físico.
-  </section>`;
+  <section class="pg11-safety"><strong>Protección de costo:</strong> el backend bloquea las cartas directas de acreedores/collectors para que no puedan convertirse accidentalmente en una orden PostGrid.</section>`;
 
-  const gb=document.getElementById("pg11-groups");
-  gb.innerHTML=groups.length?groups.map(groupCard).join(""):`<div class="empty text-sm">No hay cartas pendientes de agrupar.</div>`;
-
-  const findGroup=key=>groups.find(g=>g.group_key===key);
-  gb.querySelectorAll("[data-prepare-group]").forEach(b=>b.onclick=async()=>{
-    const key=b.dataset.prepareGroup,g=findGroup(key);
-    if(!g)return;
-    const select=gb.querySelector(`[data-group-service="${CSS.escape(key)}"]`);
+  const cb=document.getElementById("pg11-certified");
+  cb.innerHTML=groups.length?groups.map(certifiedCard).join(""):`<div class="empty text-sm">No hay Certified pendientes.</div>`;
+  cb.querySelectorAll("[data-prepare-group]").forEach(b=>b.onclick=async()=>{
+    const g=groups.find(x=>x.group_key===b.dataset.prepareGroup);if(!g)return;
     b.disabled=true;b.textContent="Preparando…";
     try{
-      await api.post("/postgrid/packages/prepare",{letter_ids:g.letter_ids,mailing_class:select?.value||"certified_return_receipt"});
-      toast(`${g.letter_count} cartas agrupadas en 1 paquete para ${g.recipient_name}`,"success");
+      await api.post("/postgrid/packages/prepare",{letter_ids:g.letter_ids,mailing_class:"certified_return_receipt"});
+      toast(`${g.letter_count} carta(s) agrupadas en 1 Certified para ${g.recipient_name}`,"success");
       await renderMailingsV11(container);
-    }catch(e){toast(e.detail||e.message,"error");b.disabled=false;b.textContent="Preparar paquete"}
+    }catch(e){toast(e.detail||e.message,"error");b.disabled=false;b.textContent="Preparar Certified"}
   });
 
-  document.getElementById("pg11-prepare-all")?.addEventListener("click",async e=>{
-    const b=e.currentTarget;
-    if(!confirm(`Se crearán ${groups.length} paquetes certificados para ${totalLetters} cartas. ¿Continuar?`))return;
-    b.disabled=true;b.textContent="Preparando paquetes…";
+  const sb=document.getElementById("pg11-stamps");
+  sb.innerHTML=stampGroups.length?stampGroups.map(stampCard).join(""):`<div class="empty text-sm">No hay sobres con stamp pendientes.</div>`;
+  sb.querySelectorAll("[data-stamp-mailed]").forEach(b=>b.onclick=async()=>{
+    const g=stampGroups.find(x=>x.group_key===b.dataset.stampMailed);if(!g)return;
+    if(!confirm(`Confirma que imprimiste y enviaste ${g.letter_count} carta(s) a ${g.recipient_name} usando correo normal con stamp.`))return;
+    b.disabled=true;b.textContent="Guardando…";
     try{
-      let made=0;
-      for(const g of groups){
-        await api.post("/postgrid/packages/prepare",{letter_ids:g.letter_ids,mailing_class:"certified_return_receipt"});
-        made++;
-      }
-      toast(`${made} paquete(s) preparados para ${totalLetters} cartas`,"success");
+      await api.post("/stamp-mail/mark-mailed",{letter_ids:g.letter_ids});
+      toast(`${g.letter_count} carta(s) marcadas como enviadas con stamp`,"success");
       await renderMailingsV11(container);
-    }catch(err){toast(err.detail||err.message,"error");b.disabled=false;b.textContent=`Preparar los ${groups.length} paquetes`}
+    }catch(e){toast(e.detail||e.message,"error");b.disabled=false;b.textContent="Marcar enviado con stamp"}
   });
 
   const pb=document.getElementById("pg11-packages");
-  pb.innerHTML=packages.length?`<div class="pg11-table"><table>
-    <thead><tr><th>Paquete</th><th>Cliente / destinatario</th><th>Cartas</th><th>Estado</th><th>Tracking</th><th></th></tr></thead>
-    <tbody>${packages.map(x=>`<tr>
-      <td><code>${escapeHtml(x.internal_reference||`CFP-${x.id}`)}</code><small>Ronda ${x.round_number||1}</small></td>
-      <td><strong>${escapeHtml(x.client_name||"—")}</strong><small>→ ${escapeHtml(x.recipient_name||"—")}</small></td>
-      <td><strong>${x.letter_count||0}</strong><small>1 solo sobre</small></td>
-      <td>${badge(x.status,kind(x.status))}<small>${escapeHtml(x.mailing_class||"certified")}</small></td>
-      <td>${x.tracking_number?`<code>${escapeHtml(x.tracking_number)}</code>`:"—"}</td>
-      <td class="pg11-actions">
-        ${!x.provider_job_id
-          ?`<button class="btn btn-primary btn-sm" data-submit-package="${x.id}">Enviar a TEST</button>`
-          :`<button class="btn btn-ghost btn-sm" data-sync-package="${x.id}">Sincronizar</button>`}
-      </td>
-    </tr>`).join("")}</tbody></table></div>`:`<div class="empty text-sm">Todavía no hay paquetes preparados.</div>`;
+  pb.innerHTML=packages.length?`<div class="pg11-table"><table><thead><tr><th>Paquete</th><th>Destinatario</th><th>Cartas</th><th>Estado</th><th>Tracking</th><th></th></tr></thead>
+  <tbody>${packages.map(x=>`<tr><td><code>${escapeHtml(x.internal_reference||`CFP-${x.id}`)}</code></td>
+  <td>${escapeHtml(x.recipient_name||"—")}</td><td>${x.letter_count||0}</td><td>${badge(x.status,kind(x.status))}</td>
+  <td>${x.tracking_number?`<code>${escapeHtml(x.tracking_number)}</code>`:"—"}</td>
+  <td>${!x.provider_job_id?`<button class="btn btn-primary btn-sm" data-submit-package="${x.id}">Enviar a TEST</button>`:`<button class="btn btn-ghost btn-sm" data-sync-package="${x.id}">Sincronizar</button>`}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty text-sm">Todavía no hay paquetes Certified preparados.</div>`;
 
   pb.querySelectorAll("[data-submit-package]").forEach(b=>b.onclick=async()=>{
     const pkg=packages.find(x=>String(x.id)===String(b.dataset.submitPackage));
-    if(!confirm(`Esto creará UNA orden TEST para ${pkg?.letter_count||0} cartas agrupadas. No se enviará correo físico. ¿Continuar?`))return;
+    if(!confirm(`Crear UNA orden PostGrid TEST para este paquete de ${pkg?.letter_count||0} carta(s). No se enviará correo físico.`))return;
     b.disabled=true;b.textContent="Enviando…";
-    try{
-      const r=await api.post(`/postgrid/packages/${b.dataset.submitPackage}/submit`,{});
-      toast(`1 orden PostGrid TEST creada para ${r.letter_count||pkg?.letter_count||0} cartas`,"success");
-      await renderMailingsV11(container);
-    }catch(e){toast(e.detail||e.message,"error");b.disabled=false;b.textContent="Enviar a TEST"}
+    try{await api.post(`/postgrid/packages/${b.dataset.submitPackage}/submit`,{});toast("Orden TEST creada","success");await renderMailingsV11(container)}
+    catch(e){toast(e.detail||e.message,"error");b.disabled=false;b.textContent="Enviar a TEST"}
   });
-
   pb.querySelectorAll("[data-sync-package]").forEach(b=>b.onclick=async()=>{
-    b.disabled=true;b.textContent="Sincronizando…";
-    try{
-      await api.post(`/postgrid/packages/${b.dataset.syncPackage}/sync`,{});
-      toast("Estado del paquete actualizado","success");
-      await renderMailingsV11(container);
-    }catch(e){toast(e.detail||e.message,"error");b.disabled=false;b.textContent="Sincronizar"}
+    b.disabled=true;
+    try{await api.post(`/postgrid/packages/${b.dataset.syncPackage}/sync`,{});toast("Estado actualizado","success");await renderMailingsV11(container)}
+    catch(e){toast(e.detail||e.message,"error");b.disabled=false}
   });
 
   document.getElementById("pg11-test").onclick=async()=>{
-    const b=document.getElementById("pg11-test");
-    b.disabled=true;b.textContent="Probando…";
-    try{
-      const r=await api.post("/postgrid/test",{});
-      toast(r.message||"Conexión correcta","success");
-      await renderMailingsV11(container);
-    }catch(e){toast(e.message,"error");b.disabled=false;b.textContent="Probar conexión"}
+    const b=document.getElementById("pg11-test");b.disabled=true;b.textContent="Probando…";
+    try{const r=await api.post("/postgrid/test",{});toast(r.message||"Conexión correcta","success");await renderMailingsV11(container)}
+    catch(e){toast(e.message,"error");b.disabled=false;b.textContent="Probar conexión"}
   };
 }
