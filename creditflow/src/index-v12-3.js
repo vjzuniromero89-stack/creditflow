@@ -1,4 +1,4 @@
-// CreditFlow v12.3 — Strategy Engine enhancement
+// CreditFlow v12.5.2 — Strategy Engine batched writes
 import v12 from "./index-v12.js";
 import baseWorker from "./index.js";
 import { createD1Shim } from "./db-shim.js";
@@ -13,15 +13,13 @@ async function auth(req,env,ctx){
   if(!r.ok)return false;
   try{return !!(await r.json()).authenticated}catch{return false}
 }
-
 function norm(v){return String(v??"").trim().toLowerCase().replace(/\s+/g," ")}
 function itemKey(item){
   const digits=String(item.account_number||"").replace(/\D/g,"");
   return `${norm(item.creditor_name)}|${digits.slice(-4)||norm(item.account_number)}`;
 }
 function bureauList(raw){
-  const s=norm(raw);
-  const out=[];
+  const s=norm(raw),out=[];
   if(s.includes("experian"))out.push("Experian");
   if(s.includes("equifax"))out.push("Equifax");
   if(s.includes("transunion")||s.includes("trans union"))out.push("TransUnion");
@@ -38,18 +36,18 @@ function compareGroup(group){
   const findings=[],seen=new Set();
   for(const [k,label] of defs){
     if(seen.has(label))continue;
-    const vals=group.map(x=>({id:x.id,bureaus:x.bureaus,value:x[k]}))
+    const vals=group.map(x=>({value:x[k]}))
       .filter(x=>x.value!==null&&x.value!==undefined&&String(x.value).trim()!=="");
     if(vals.length<2)continue;
     if(new Set(vals.map(x=>norm(x.value))).size>1){
-      findings.push({field:k,label,values:vals});
+      findings.push({field:k,label});
       seen.add(label);
     }
   }
   return findings;
 }
 function isCollectorItem(item){
-  const c=norm(item.category), s=norm(item.status_raw||item.status), n=norm(item.creditor_name);
+  const c=norm(item.category),s=norm(item.status_raw||item.status),n=norm(item.creditor_name);
   return c.includes("collection")||c.includes("coleccion")||c.includes("charge")||
          s.includes("collection")||s.includes("charge off")||s.includes("charge-off")||
          n.includes("collection")||n.includes("recovery")||n.includes("receivable");
@@ -63,38 +61,27 @@ async function enhancedBuild(db,clientId){
   const repairCase=await db.prepare(`SELECT * FROM repair_cases WHERE client_id=? LIMIT 1`).bind(clientId).first();
   if(!repairCase)return {error:"Primero inicia la reparación del cliente.",status:409};
 
-  // Load only the data required to validate the audit first.
-  // This guarantees an incomplete audit returns a clean 409 before optional
-  // compliance/history queries can fail.
   const [{results:items},{results:assessments}] = await Promise.all([
     db.prepare(`SELECT * FROM credit_items WHERE client_id=? ORDER BY id`).bind(clientId).all(),
     db.prepare(`SELECT * FROM dispute_assessments WHERE client_id=?`).bind(clientId).all()
   ]);
 
-  // v12.4.1 guard: Strategy must never be built before the real audit is complete.
   const activeItems=(items||[]).filter(x=>x.removed_status!=="eliminado");
-  const verifiedIds=new Set((assessments||[]).filter(a=>a.human_verified||a.auto_ready).map(a=>String(a.credit_item_id)));
+  const verifiedIds=new Set((assessments||[])
+    .filter(a=>a.human_verified||a.auto_ready)
+    .map(a=>String(a.credit_item_id)));
   const audited=activeItems.filter(i=>verifiedIds.has(String(i.id))).length;
+
   if(activeItems.length>0 && audited<activeItems.length){
     return {
-      error:`Auditoría incompleta: ${audited} de ${activeItems.length} ítems revisados por humano o sistema. Completa o automatiza la Auditoría antes de construir la estrategia.`,
-      status:409,
-      audit_required:true,
-      audited,
-      total:activeItems.length
+      error:`Auditoría incompleta: ${audited} de ${activeItems.length} ítems revisados por humano o sistema.`,
+      status:409,audit_required:true,audited,total:activeItems.length
     };
   }
 
-  // Only after the audit is complete do we load secondary strategy signals.
   let removals=[],checks=[];
-  try{
-    const r=await db.prepare(`SELECT * FROM removal_events WHERE client_id=?`).bind(clientId).all();
-    removals=r.results||[];
-  }catch{}
-  try{
-    const c=await db.prepare(`SELECT * FROM collector_compliance_checks WHERE client_id=? ORDER BY updated_at DESC,id DESC`).bind(clientId).all();
-    checks=c.results||[];
-  }catch{}
+  try{removals=(await db.prepare(`SELECT * FROM removal_events WHERE client_id=?`).bind(clientId).all()).results||[]}catch{}
+  try{checks=(await db.prepare(`SELECT * FROM collector_compliance_checks WHERE client_id=? ORDER BY updated_at DESC,id DESC`).bind(clientId).all()).results||[]}catch{}
 
   await db.prepare(`DELETE FROM strategy_actions WHERE client_id=? AND status IN ('planned','blocked')`).bind(clientId).run();
 
@@ -105,62 +92,67 @@ async function enhancedBuild(db,clientId){
     groups.get(k).push(item);
   }
 
+  const actions=[];
   let planned=0,blocked=0;
-  const insertAction=async(item,{type,target,code,status="planned",priority=30,reason,bureau=null,targetName=null})=>{
-    await db.prepare(`
-      INSERT INTO strategy_actions
-      (repair_case_id,client_id,credit_item_id,action_type,target_type,target_name,bureau,template_code,status,priority,reason)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)
-    `).bind(repairCase.id,clientId,item.id,type,target,targetName,bureau,code,status,priority,reason).run();
+
+  function pushAction(item,{type,target,code,status="planned",priority=30,reason,bureau=null,targetName=null}){
+    actions.push([
+      repairCase.id,clientId,item.id,type,target,targetName,bureau,code,status,priority,reason
+    ]);
     status==="blocked"?blocked++:planned++;
-  };
+  }
 
   for(const group of groups.values()){
     const findings=compareGroup(group);
+
     for(const item of group){
       const a=(assessments||[]).find(x=>String(x.credit_item_id)===String(item.id));
       const reappeared=(removals||[]).find(x=>String(x.credit_item_id)===String(item.id)&&x.status==="reappeared");
       const check=complianceFor(item,checks);
 
-      if(item.removed_status==="eliminado" && !reappeared)continue;
+      if(item.removed_status==="eliminado"&&!reappeared)continue;
 
       if(reappeared){
-        for(const b of bureauList(item.bureaus)){
-          await insertAction(item,{type:"reinsertion",target:"cra",code:"32",bureau:b,targetName:b,priority:10,
+        const bs=bureauList(item.bureaus);
+        if(!bs.length){
+          pushAction(item,{type:"reinsertion",target:"cra",code:"32",status:"blocked",priority:80,
+            reason:"El ítem reapareció, pero no se detectó el buró para preparar la carta."});
+        }else{
+          for(const b of bs)pushAction(item,{type:"reinsertion",target:"cra",code:"32",bureau:b,targetName:b,priority:10,
             reason:"El ítem fue removido y reapareció en un reporte posterior."});
         }
         continue;
       }
 
-      if(!a || !(a.human_verified||a.auto_ready)){
-        await insertAction(item,{type:"assessment_required",target:"internal",code:null,status:"blocked",priority:90,
-          reason:"Falta diagnóstico humano confirmado."});
+      if(!a||!(a.human_verified||a.auto_ready)){
+        pushAction(item,{type:"assessment_required",target:"internal",code:null,status:"blocked",priority:90,
+          reason:"Falta diagnóstico confirmado por humano o Auto Audit."});
         continue;
       }
 
-      if(a.accuracy_status==="identity_theft" || a.identity_theft_confirmed){
+      if(a.accuracy_status==="identity_theft"||a.identity_theft_confirmed){
         if(!a.identity_theft_confirmed){
-          await insertAction(item,{type:"identity_theft_review",target:"internal",code:null,status:"blocked",priority:90,
+          pushAction(item,{type:"identity_theft_review",target:"internal",code:null,status:"blocked",priority:90,
             reason:"Identity theft requiere confirmación real y documentación correspondiente."});
         }else{
           const bs=bureauList(item.bureaus);
-          if(!bs.length){
-            await insertAction(item,{type:"identity_theft_block",target:"cra",code:"12",status:"blocked",priority:80,
-              reason:"Identity theft confirmado, pero no se detectó buró para el ítem."});
-          }else{
-            for(const b of bs)await insertAction(item,{type:"identity_theft_block",target:"cra",code:"12",bureau:b,targetName:b,priority:10,
-              reason:"Identity theft confirmado y documentado."});
-          }
+          if(!bs.length)pushAction(item,{type:"identity_theft_block",target:"cra",code:"12",status:"blocked",priority:80,
+            reason:"Identity theft confirmado, pero no se detectó buró para el ítem."});
+          else for(const b of bs)pushAction(item,{type:"identity_theft_block",target:"cra",code:"12",bureau:b,targetName:b,priority:10,
+            reason:"Identity theft confirmado y documentado."});
         }
         continue;
       }
 
       if(a.accuracy_status==="unauthorized_inquiry"){
         if(!a.consumer_confirmed){
-          await insertAction(item,{type:"consumer_confirmation",target:"internal",code:null,status:"blocked",priority:90,
+          pushAction(item,{type:"consumer_confirmation",target:"internal",code:null,status:"blocked",priority:90,
             reason:"Confirma que el consumidor no reconoce/autorizó la inquiry."});
         }else{
-          for(const b of bureauList(item.bureaus))await insertAction(item,{type:"unauthorized_inquiry",target:"cra",code:"11",bureau:b,targetName:b,priority:20,
+          const bs=bureauList(item.bureaus);
+          if(!bs.length)pushAction(item,{type:"unauthorized_inquiry",target:"cra",code:"11",status:"blocked",priority:80,
+            reason:"Inquiry confirmada, pero falta identificar el buró."});
+          else for(const b of bs)pushAction(item,{type:"unauthorized_inquiry",target:"cra",code:"11",bureau:b,targetName:b,priority:20,
             reason:"Inquiry confirmada como no reconocida/no autorizada."});
         }
         continue;
@@ -168,42 +160,47 @@ async function enhancedBuild(db,clientId){
 
       if(a.accuracy_status==="accurate_negative"){
         if(item.category==="pago_tardio"){
-          await insertAction(item,{type:"goodwill",target:"furnisher",code:"40",targetName:item.creditor_name||null,
+          pushAction(item,{type:"goodwill",target:"furnisher",code:"40",targetName:item.creditor_name||null,
             status:item.creditor_address?"planned":"blocked",priority:item.creditor_address?30:80,
-            reason:item.creditor_address?"Información correcta; goodwill discrecional, no disputa.":"Información correcta; goodwill posible, pero falta dirección postal."});
-        }else if(isCollectorItem(item) && check?.human_verified &&
-                 check.license_required_status==="required" &&
-                 ["inactive","not_found"].includes(check.license_status)){
-          await insertAction(item,{type:"collector_compliance_review",target:"internal",code:null,status:"blocked",priority:15,
-            reason:`La deuda fue reconocida como correcta, pero existe un hallazgo regulatorio confirmado (${check.license_status}). Revisar compliance por separado; no tratarlo automáticamente como invalidez de la deuda.`});
+            reason:item.creditor_address?"Información correcta; goodwill discrecional, no disputa.":"Goodwill posible, pero falta dirección postal."});
+        }else if(isCollectorItem(item)&&check?.human_verified&&
+                 check.license_required_status==="required"&&["inactive","not_found"].includes(check.license_status)){
+          pushAction(item,{type:"collector_compliance_review",target:"internal",code:null,status:"blocked",priority:15,
+            reason:`La deuda fue reconocida como correcta, pero existe un hallazgo regulatorio confirmado (${check.license_status}). Revisar compliance por separado.`});
         }else{
-          await insertAction(item,{type:"no_dispute",target:"internal",code:null,status:"blocked",priority:90,
+          pushAction(item,{type:"no_dispute",target:"internal",code:null,status:"blocked",priority:90,
             reason:"No hay base para disputar información negativa confirmada como correcta."});
         }
         continue;
       }
 
       if(a.accuracy_status==="post_payment_mismatch"){
-        await insertAction(item,{type:"post_payment_correction",target:"furnisher",code:"41",targetName:item.creditor_name||null,
+        pushAction(item,{type:"post_payment_correction",target:"furnisher",code:"41",targetName:item.creditor_name||null,
           status:item.creditor_address?"planned":"blocked",priority:item.creditor_address?20:80,
-          reason:item.creditor_address?"El balance/estatus posterior al pago o settlement no coincide con la evidencia.":"Discrepancia post-pago; falta dirección postal del furnisher."});
+          reason:item.creditor_address?"El balance/estatus posterior al pago no coincide con la evidencia.":"Discrepancia post-pago; falta dirección postal del furnisher."});
         continue;
       }
 
       if(a.issue_type==="prior_verified"){
-        for(const b of bureauList(item.bureaus))await insertAction(item,{type:"procedure_request",target:"cra",code:"31",bureau:b,targetName:b,priority:25,
+        const bs=bureauList(item.bureaus);
+        if(!bs.length)pushAction(item,{type:"procedure_request",target:"cra",code:"31",status:"blocked",priority:80,
+          reason:"Previamente verificado, pero falta identificar el buró."});
+        else for(const b of bs)pushAction(item,{type:"procedure_request",target:"cra",code:"31",bureau:b,targetName:b,priority:25,
           reason:"El ítem fue reportado como verificado; revisar el procedimiento usado."});
         continue;
       }
 
       if(a.issue_type==="new_evidence"){
-        for(const b of bureauList(item.bureaus))await insertAction(item,{type:"reinvestigation_new_evidence",target:"cra",code:"30",bureau:b,targetName:b,priority:20,
+        const bs=bureauList(item.bureaus);
+        if(!bs.length)pushAction(item,{type:"reinvestigation_new_evidence",target:"cra",code:"30",status:"blocked",priority:80,
+          reason:"Existe nueva evidencia, pero falta identificar el buró."});
+        else for(const b of bs)pushAction(item,{type:"reinvestigation_new_evidence",target:"cra",code:"30",bureau:b,targetName:b,priority:20,
           reason:"Existe nueva evidencia relevante."});
         continue;
       }
 
       if(a.issue_type==="furnisher_data_mismatch"){
-        await insertAction(item,{type:"direct_furnisher",target:"furnisher",code:"21",targetName:item.creditor_name||null,
+        pushAction(item,{type:"direct_furnisher",target:"furnisher",code:"21",targetName:item.creditor_name||null,
           status:item.creditor_address?"planned":"blocked",priority:item.creditor_address?20:80,
           reason:item.creditor_address?"La discrepancia se relaciona directamente con datos del furnisher.":"Discrepancia con furnisher; falta dirección postal."});
         continue;
@@ -213,71 +210,76 @@ async function enhancedBuild(db,clientId){
         const described=findings.map(f=>f.label).join(", ");
         const bs=bureauList(item.bureaus);
         if(!bs.length){
-          await insertAction(item,{type:"cra_factual_dispute",target:"cra",code:"10",status:"blocked",priority:80,
+          pushAction(item,{type:"cra_factual_dispute",target:"cra",code:"10",status:"blocked",priority:80,
             reason:`Se detectaron diferencias entre burós (${described}), pero no se detectó buró en este registro.`});
         }else{
-          for(const b of bs)await insertAction(item,{type:"cra_factual_dispute",target:"cra",code:"10",bureau:b,targetName:b,priority:15,
-            reason:`Inconsistencia inter-buró detectada y diagnóstico humano confirmado. Campos a revisar: ${described}. La carta debe citar únicamente diferencias verificadas.`});
+          for(const b of bs)pushAction(item,{type:"cra_factual_dispute",target:"cra",code:"10",bureau:b,targetName:b,priority:15,
+            reason:`Inconsistencia inter-buró detectada. Campos a revisar: ${described}. La carta debe citar únicamente diferencias verificadas.`});
         }
-        if(isCollectorItem(item) && ["not_mine","inaccurate","incomplete"].includes(a.accuracy_status)){
-          await insertAction(item,{type:"collector_validation_review",target:"collector",code:"20",targetName:item.creditor_name||null,
+        if(isCollectorItem(item)&&["not_mine","inaccurate","incomplete"].includes(a.accuracy_status)){
+          pushAction(item,{type:"collector_validation_review",target:"collector",code:"20",targetName:item.creditor_name||null,
             status:item.creditor_address?"planned":"blocked",priority:item.creditor_address?25:80,
-            reason:item.creditor_address?"Collection con inexactitud/incompletitud confirmada; revisar también información/validación del collector.":"Collection con inexactitud/incompletitud confirmada; falta dirección postal del collector."});
+            reason:item.creditor_address?"Collection con inexactitud/incompletitud; revisar también información/validación del collector.":"Collection con inexactitud/incompletitud; falta dirección postal del collector."});
         }
       }else{
         const bs=bureauList(item.bureaus);
         if(["inaccurate","incomplete","not_mine","duplicate","obsolete"].includes(a.accuracy_status)){
-          if(!bs.length){
-            await insertAction(item,{type:"cra_factual_dispute",target:"cra",code:"10",status:"blocked",priority:80,
-              reason:"Existe una inexactitud/incompletitud específica documentada, pero no se detectó buró."});
-          }else{
-            for(const b of bs)await insertAction(item,{type:"cra_factual_dispute",target:"cra",code:"10",bureau:b,targetName:b,priority:20,
-              reason:"Existe una inexactitud/incompletitud específica documentada y confirmada por revisión humana."});
-          }
+          if(!bs.length)pushAction(item,{type:"cra_factual_dispute",target:"cra",code:"10",status:"blocked",priority:80,
+            reason:"Existe una inexactitud/incompletitud documentada, pero no se detectó buró."});
+          else for(const b of bs)pushAction(item,{type:"cra_factual_dispute",target:"cra",code:"10",bureau:b,targetName:b,priority:20,
+            reason:"Existe una inexactitud/incompletitud específica documentada."});
         }else{
-          await insertAction(item,{type:"strategy_review",target:"internal",code:null,status:"blocked",priority:70,
-            reason:"No hay una señal suficiente para generar una disputa automática. Revisar diagnóstico y evidencia."});
+          pushAction(item,{type:"strategy_review",target:"internal",code:null,status:"blocked",priority:70,
+            reason:"No hay señal suficiente para generar una disputa automática. Revisar diagnóstico y evidencia."});
         }
       }
 
-      if(isCollectorItem(item) && check?.human_verified &&
-         check.license_required_status==="required" &&
+      if(isCollectorItem(item)&&check?.human_verified&&check.license_required_status==="required"&&
          ["inactive","not_found"].includes(check.license_status)){
-        await insertAction(item,{type:"collector_compliance_review",target:"internal",code:null,status:"blocked",priority:12,
-          reason:`Hallazgo regulatorio confirmado (${check.license_status}) en ${check.jurisdiction||"jurisdicción indicada"}. Mantener separado de la disputa de exactitud y revisar con la fuente oficial registrada.`});
+        pushAction(item,{type:"collector_compliance_review",target:"internal",code:null,status:"blocked",priority:12,
+          reason:`Hallazgo regulatorio confirmado (${check.license_status}) en ${check.jurisdiction||"jurisdicción indicada"}. Mantener separado de la disputa de exactitud.`});
       }
     }
+  }
+
+  // v12.5.2: ONE Supabase write for all strategy actions.
+  if(actions.length){
+    const placeholders=actions.map(()=>"(?,?,?,?,?,?,?,?,?,?,?)").join(",");
+    await db.prepare(`
+      INSERT INTO strategy_actions
+      (repair_case_id,client_id,credit_item_id,action_type,target_type,target_name,bureau,template_code,status,priority,reason)
+      VALUES ${placeholders}
+    `).bind(actions.flat()).run();
   }
 
   const run=await db.prepare(`
     INSERT INTO strategy_runs (repair_case_id,client_id,status,summary_json)
     VALUES (?,?,'completed',?) RETURNING *
-  `).bind(repairCase.id,clientId,JSON.stringify({planned,blocked,total_items:(items||[]).length,engine:"v12.3"})).first();
+  `).bind(repairCase.id,clientId,JSON.stringify({
+    planned,blocked,total_items:(items||[]).length,actions:actions.length,engine:"v12.5.2"
+  })).first();
 
   await db.prepare(`
     UPDATE repair_cases SET current_stage='strategy_ready',
-      next_action=?, last_strategy_at=NOW(), updated_at=NOW()
+      next_action=?,last_strategy_at=NOW(),updated_at=NOW()
     WHERE id=?
-  `).bind(planned?`Revisar ${planned} acción(es) planificada(s) por Strategy Engine v12.3`:"Completar revisiones pendientes",repairCase.id).run();
+  `).bind(planned?`Revisar ${planned} acción(es) planificada(s) por Strategy Engine v12.5.2`:"Completar revisiones pendientes",repairCase.id).run();
 
-  return {run,planned,blocked,engine:"v12.3"};
+  return {run,planned,blocked,actions:actions.length,engine:"v12.5.2"};
 }
 
-export default {
-  async fetch(request,env,ctx){
-    const u=new URL(request.url),m=request.method.toUpperCase();
-    const match=u.pathname.match(/^\/api\/strategy\/client\/(\d+)\/build$/);
-    if(m==="POST" && match){
-      if(!(await auth(request,env,ctx)))return out({error:"No autorizado"},401);
-      try{
-        const db=createD1Shim(env);
-        const r=await enhancedBuild(db,Number(match[1]));
-        if(r.error)return out({error:r.error},r.status||400);
-        return out(r);
-      }catch(e){
-        return out({error:"Strategy Engine v12.3 falló",detail:String(e?.message||e)},500);
-      }
+export default{async fetch(request,env,ctx){
+  const u=new URL(request.url),m=request.method.toUpperCase();
+  const match=u.pathname.match(/^\/api\/strategy\/client\/(\d+)\/build$/);
+  if(m==="POST"&&match){
+    if(!(await auth(request,env,ctx)))return out({error:"No autorizado"},401);
+    try{
+      const r=await enhancedBuild(createD1Shim(env),Number(match[1]));
+      if(r.error)return out({error:r.error,...r},r.status||400);
+      return out(r);
+    }catch(e){
+      return out({error:"Strategy Engine v12.5.2 falló",detail:String(e?.message||e)},500);
     }
-    return v12.fetch(request,env,ctx);
   }
-};
+  return v12.fetch(request,env,ctx);
+}};
