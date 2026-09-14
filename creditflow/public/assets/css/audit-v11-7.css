@@ -47,3 +47,16 @@
 .cf118-findings>div{display:grid;grid-template-columns:160px 1fr;gap:10px;font-size:11px}
 .cf118-findings span{color:var(--cf7-muted)}
 @media(max-width:800px){.cf118-head-actions{align-items:flex-end;flex-direction:column}.cf118-group-head{align-items:flex-start;flex-direction:column}.cf118-findings>div{grid-template-columns:1fr}}
+
+/* CreditFlow v11.9 — Collector Compliance */
+.cf119-compliance{margin-top:12px;padding:13px;border:1px solid rgba(103,190,255,.22);border-radius:10px;background:rgba(6,20,31,.48)}
+.cf119-title{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.cf119-title span{display:block;font-size:9px;letter-spacing:.12em;color:var(--cf7-muted)}
+.cf119-title strong{display:block;margin-top:2px;font-size:12px}
+.cf119-review{font-size:9px;padding:5px 8px;border-radius:999px;border:1px solid rgba(245,190,70,.28)}
+.cf119-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}
+.cf119-grid>div{padding:9px;border:1px solid var(--cf7-line);border-radius:8px}
+.cf119-grid small{display:block;color:var(--cf7-muted);font-size:9px}
+.cf119-grid strong{display:block;margin-top:3px;font-size:10px;line-height:1.35}
+.cf119-compliance p{margin:9px 0 0;color:var(--cf7-muted);font-size:10px;line-height:1.45}
+@media(max-width:850px){.cf119-grid{grid-template-columns:1fr 1fr}}
