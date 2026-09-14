@@ -1,4 +1,4 @@
-// CreditFlow v13.6 — Dual Track Strategy: CRA + Creditor/Collector
+// CreditFlow v13.6.2 — CRA Certified + Creditor/Collector Stamp Queue
 // Round 1 goes to the CRA reporting each negative item.
 // Bureau name/address are resolved automatically from the report's bureau field.
 import v134 from "./index-v13-4.js";
@@ -574,7 +574,7 @@ function packagePayload(pkg,client,letters){
 
 async function groupedPackageStatus(db){
   const {results:ready=[]}=await db.prepare(`
-    SELECT l.id,l.client_id,l.title,l.recipient_name,l.recipient_address,l.round_number,l.status,
+    SELECT l.id,l.client_id,l.title,l.recipient_name,l.recipient_address,l.round_number,l.status,l.notes,
            c.full_name AS client_name
     FROM letters l
     JOIN clients c ON c.id=l.client_id
@@ -585,8 +585,11 @@ async function groupedPackageStatus(db){
     ORDER BY c.full_name,l.recipient_name,l.round_number,l.id
   `).all();
 
+  const craReady=ready.filter(l=>!String(l.notes||"").startsWith("simple_strategy_v13_5:DIRECT:"));
+  const stampReady=ready.filter(l=>String(l.notes||"").startsWith("simple_strategy_v13_5:DIRECT:"));
+
   const groupsMap=new Map();
-  for(const l of ready){
+  for(const l of craReady){
     const key=`${l.client_id}::${recipientKey(l.recipient_name,l.recipient_address,l.round_number||1)}`;
     if(!groupsMap.has(key)){
       groupsMap.set(key,{
@@ -600,6 +603,23 @@ async function groupedPackageStatus(db){
     g.letters.push({id:Number(l.id),title:l.title});
   }
   const groups=[...groupsMap.values()].map(g=>({...g,letter_count:g.letter_ids.length}));
+
+  // Stamp queue groups by client + direct recipient + round.
+  const stampMap=new Map();
+  for(const l of stampReady){
+    const key=`${l.client_id}::STAMP::${recipientKey(l.recipient_name,l.recipient_address,l.round_number||1)}`;
+    if(!stampMap.has(key)){
+      stampMap.set(key,{
+        group_key:key,client_id:l.client_id,client_name:l.client_name,
+        recipient_name:l.recipient_name,recipient_address:l.recipient_address,
+        round_number:Number(l.round_number||1),letter_ids:[],letters:[]
+      });
+    }
+    const g=stampMap.get(key);
+    g.letter_ids.push(Number(l.id));
+    g.letters.push({id:Number(l.id),title:l.title});
+  }
+  const stamp_groups=[...stampMap.values()].map(g=>({...g,letter_count:g.letter_ids.length}));
 
   const {results:packages=[]}=await db.prepare(`
     SELECT p.*,c.full_name AS client_name,
@@ -617,8 +637,12 @@ async function groupedPackageStatus(db){
 
   return {
     ready_letters_count:ready.length,
+    certified_letters_count:craReady.length,
+    stamp_letters_count:stampReady.length,
     ready_packages_count:groups.length,
+    stamp_package_count:stamp_groups.length,
     groups,
+    stamp_groups,
     packages:packages||[]
   };
 }
@@ -636,6 +660,8 @@ async function preparePackage(db,body={}){
 
   if(letters.length!==ids.length)return {error:"Una o más cartas no fueron encontradas.",status:404};
   if(letters.some(l=>l.status!=="lista"))return {error:"Todas las cartas del paquete deben estar en estado Lista.",status:409};
+  if(letters.some(l=>String(l.notes||"").startsWith("simple_strategy_v13_5:DIRECT:")))
+    return {error:"Las cartas directas a acreedores/collectors pertenecen a la cola STAMP y no pueden enviarse por PostGrid.",status:409};
 
   const first=letters[0];
   const round=Number(first.round_number||1);
@@ -761,6 +787,26 @@ async function syncPackage(db,env,id){
   }
 }
 
+async function markStampMailed(db,body={}){
+  const ids=Array.isArray(body.letter_ids)?body.letter_ids.map(Number).filter(Number.isFinite):[];
+  if(!ids.length)return {error:"No se recibieron cartas.",status:400};
+  const ph=ids.map(()=>"?").join(",");
+  const {results:letters=[]}=await db.prepare(`
+    SELECT id,status,notes FROM letters WHERE id IN (${ph})
+  `).bind(...ids).all();
+  if(letters.length!==ids.length)return {error:"Una o más cartas no fueron encontradas.",status:404};
+  if(letters.some(l=>!String(l.notes||"").startsWith("simple_strategy_v13_5:DIRECT:")))
+    return {error:"Solo las cartas directas a acreedores/collectors pueden marcarse como correo con stamp.",status:409};
+  if(letters.some(l=>l.status!=="lista"))
+    return {error:"Todas las cartas deben estar listas antes de marcarlas como enviadas.",status:409};
+
+  await db.prepare(`
+    UPDATE letters SET status='enviada',updated_at=NOW()
+    WHERE id IN (${ph})
+  `).bind(...ids).run();
+  return {ok:true,mailed:ids.length,mail_method:"stamp"};
+}
+
 export default{
   async fetch(request,env,ctx){
 
@@ -771,6 +817,14 @@ export default{
       if(!(await auth(request,env,ctx)))return out({error:"No autorizado"},401);
       try{return out(await groupedPackageStatus(createD1Shim(env)))}
       catch(e){return out({error:"No se pudieron cargar los paquetes certificados",detail:String(e?.message||e)},500)}
+    }
+    if(u.pathname==="/api/stamp-mail/mark-mailed"&&m==="POST"){
+      if(!(await auth(request,env,ctx)))return out({error:"No autorizado"},401);
+      try{
+        let body={}; try{body=await request.json()}catch{}
+        const r=await markStampMailed(createD1Shim(env),body);
+        return out(r,r.error?(r.status||400):200);
+      }catch(e){return out({error:"No se pudo actualizar la cola de correo con stamp",detail:String(e?.message||e)},500)}
     }
     if(u.pathname==="/api/postgrid/packages/prepare"&&m==="POST"){
       if(!(await auth(request,env,ctx)))return out({error:"No autorizado"},401);
