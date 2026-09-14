@@ -250,3 +250,30 @@
 @media(max-width:520px){
   .cf8-workflow .cf1162-data-grid{grid-template-columns:1fr !important}
 }
+
+
+/* v11.6.5 — full postal address */
+.cf8-workflow .cf1165-address{
+  display:flex !important;
+  flex-direction:column !important;
+  gap:4px !important;
+}
+.cf8-workflow .cf1165-address b{
+  display:block !important;
+  color:#eef6fa !important;
+  font:inherit !important;
+  font-weight:700 !important;
+}
+.cf8-workflow .cf1165-address em{
+  display:block !important;
+  margin:0 !important;
+  color:#9fb2c2 !important;
+  font-size:13px !important;
+  line-height:1.35 !important;
+  font-style:normal !important;
+  font-weight:600 !important;
+}
+.cf8-workflow .cf1165-address .cf1165-missing{
+  color:#f2bd62 !important;
+  font-weight:600 !important;
+}
