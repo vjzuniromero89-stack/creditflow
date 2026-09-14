@@ -5,7 +5,7 @@ import { initials } from "./utils.js";
 
 import { renderLoginOrSetup } from "./sections/auth-screens.js";
 import { renderDashboard } from "./sections/dashboard.js";
-import { renderClientsList, renderClientDetail } from "./sections/clients.js";
+import { renderClientsList, renderClientDetail } from "./sections/clients-auto.js";
 import { renderPortalUsers } from "./sections/users.js";
 import { renderTemplates } from "./sections/templates.js";
 import { renderLettersList, renderLetterDetail, renderNewLetter } from "./sections/letters.js";
@@ -205,18 +205,6 @@ window.__creditflowNavigate = (hash) => {
   location.hash = hash;
 };
 
-// El portal del cliente ("#/portal") es una app completamente aparte de la tuya — su propia
-// pantalla de acceso, su propia sesión (cookie distinta) y su propia vista, así que ni siquiera
-// intenta la sesión de tu equipo (/auth/status) cuando la URL empieza así.
-//
-// OJO: este chequeo solo corre UNA vez, al cargarse app.js. Si alguien ya tiene la pestaña abierta
-// en tu app (o en el portal) y solo cambia el "#/..." de la URL sin recargar la página completa
-// (por ejemplo escribiendo la URL con #/portal en una pestaña que ya estaba abierta en tu
-// dashboard, o pegando un link), el navegador NO vuelve a cargar app.js — solo dispara
-// "hashchange" — así que sin este listener se quedaría viendo la pantalla de tu equipo (y
-// mandando el login a /api/auth/login) aunque la barra de direcciones ya diga "#/portal". Por eso
-// se fuerza una recarga completa de la página cada vez que el hash cruza esa frontera, para que
-// arranque de cero del lado correcto.
 let __wasPortalHash = location.hash.startsWith("#/portal");
 window.addEventListener("hashchange", () => {
   const isPortalHash = location.hash.startsWith("#/portal");
