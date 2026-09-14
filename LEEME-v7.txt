@@ -1,0 +1,101 @@
+CREDITFLOW PROFESSIONAL WORKSPACE v7
+====================================
+
+ESTA VERSIÓN REDISEÑA TODA LA APP.
+
+YA SE HIZO EN SUPABASE
+----------------------
+Se aplicó una migración ADITIVA, sin borrar datos, que crea:
+- report_imports
+- removal_events
+- automation_events
+- payment_events
+
+No se tocó la tabla clients ni credit_items ni letters.
+
+REEMPLAZAR
+----------
+1. creditflow/wrangler.jsonc
+2. creditflow/src/db-shim.js
+3. creditflow/public/index.html
+4. creditflow/public/assets/js/app.js
+
+AGREGAR
+-------
+5. creditflow/src/index-v7.js
+6. creditflow/public/assets/js/sections/clients-v7.js
+7. creditflow/public/assets/js/sections/collections-v7.js
+8. creditflow/public/assets/js/sections/history-v7.js
+9. creditflow/public/assets/js/sections/dashboard-v7.js
+10. creditflow/public/assets/js/sections/earnings-v7.js
+11. creditflow/public/assets/js/sections/wrappers-v7.js
+12. creditflow/public/assets/css/creditflow-v7.css
+
+NO BORRAR / NO CAMBIAR
+----------------------
+- src/index.js
+- src/index-auto.js
+- sections/clients.js
+- sections/collections.js
+- datos de Supabase
+
+NUEVA ORGANIZACIÓN
+------------------
+Centro de control
+Expedientes
+Resultados y cobros
+Cartas
+Envíos certificados
+Estrategia y plantillas
+Portal de clientes
+Sistema
+
+DENTRO DEL CLIENTE
+------------------
+Resumen
+Reporte
+Negativos
+Estrategia
+Documentos
+Cartas
+Historial y cobros
+Seguridad
+
+NEGATIVOS
+---------
+- agrupados por categoría
+- grupos desplegables
+- detalle por cuenta al hacer click
+- filtros: todos / en reporte / removidos / por cobrar / pagados
+- remoción histórica visible
+- pago con método y referencia
+
+PAGOS
+-----
+Cuando una remoción se cobra:
+- registra fecha
+- monto
+- método de pago
+- referencia
+- notas
+- queda en payment_events
+- cambia el evento de remoción a pagado
+- conserva el historial
+
+IMPORTANTE
+----------
+Después del deploy:
+1. Ctrl+F5
+2. Abre Centro de control
+3. Abre un cliente
+4. Revisa Negativos
+5. Revisa Historial y cobros
+6. Revisa Resultados y cobros
+
+ESTABILIDAD SUPABASE
+--------------------
+También se aplicó una RPC segura exec_ddl en Supabase. El db-shim v7:
+- mantiene los reintentos automáticos;
+- manda CREATE/ALTER a exec_ddl;
+- mantiene SELECT/INSERT/UPDATE/DELETE en exec_sql.
+Esto evita que Ganancias/importaciones intenten ejecutar DDL por el canal incorrecto.
