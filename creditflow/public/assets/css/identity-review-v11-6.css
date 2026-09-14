@@ -1,196 +1,36 @@
 
-/* CreditFlow v11.6.1 — Identity Review Layout Fix
-   Visual-only hotfix. No backend/database changes. */
-
-.cf115-identity-review{
-  margin:22px 0;
-  padding:24px;
-  border:1px solid rgba(91,221,211,.20);
-  border-radius:20px;
-  background:linear-gradient(180deg,rgba(11,29,40,.92),rgba(8,23,33,.92));
-  box-shadow:0 18px 45px rgba(0,0,0,.12);
-  overflow:hidden;
-}
-
-.cf115-title{
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
-  gap:20px;
-  padding-bottom:18px;
-  margin-bottom:18px;
-  border-bottom:1px solid rgba(148,163,184,.12);
-}
-.cf115-title > div{min-width:0}
-.cf115-title strong{
-  display:block;
-  font-size:20px;
-  line-height:1.25;
-  color:#eef6fb;
-  margin:0 0 6px;
-}
-.cf115-title > div > span{
-  display:block;
-  color:#8fa3b6;
-  font-size:14px;
-  line-height:1.5;
-}
-.cf115-review-badge{
-  flex:0 0 auto;
-  display:inline-flex !important;
-  align-items:center;
-  min-height:30px;
-  padding:6px 11px !important;
-  border:1px solid rgba(255,203,69,.24);
-  border-radius:999px;
-  background:rgba(255,193,7,.09);
-  color:#ffd76a !important;
-  font-size:11px !important;
-  font-weight:800;
-  letter-spacing:.06em;
-  white-space:nowrap;
-}
-
-.cf115-person-grid{
-  display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
-  gap:12px;
-  margin:0 0 22px;
-}
-.cf115-person-grid > div{
-  min-width:0;
-  min-height:92px;
-  padding:16px 17px;
-  border:1px solid rgba(148,163,184,.14);
-  border-radius:14px;
-  background:rgba(255,255,255,.025);
-}
-.cf115-person-grid small{
-  display:block;
-  margin:0 0 9px;
-  color:#8fa3b6;
-  font-size:12px;
-  line-height:1.3;
-}
-.cf115-person-grid strong{
-  display:block;
-  color:#edf5fa;
-  font-size:15px;
-  line-height:1.45;
-  overflow-wrap:anywhere;
-}
-
-.cf115-addresses{
-  padding:18px;
-  border:1px solid rgba(148,163,184,.12);
-  border-radius:16px;
-  background:rgba(3,14,22,.22);
-}
-.cf115-subhead{
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
-  gap:18px;
-  margin-bottom:12px;
-}
-.cf115-subhead > strong{
-  display:block;
-  color:#eef6fb;
-  font-size:16px;
-  line-height:1.35;
-}
-.cf115-subhead > span{
-  max-width:620px;
-  color:#8fa3b6;
-  font-size:13px;
-  line-height:1.5;
-  text-align:right;
-}
-
-.cf115-address-row{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:18px;
-  padding:13px 0;
-  border-top:1px solid rgba(148,163,184,.10);
-}
-.cf115-address-row:first-of-type{border-top:0}
-.cf115-address-row > div{min-width:0}
-.cf115-address-row strong{
-  display:block;
-  color:#edf5fa;
-  font-size:14px;
-  line-height:1.4;
-}
-.cf115-address-row small{
-  display:block;
-  margin-top:4px;
-  color:#7f95a8;
-  font-size:12px;
-}
-.cf115-address-class{
-  flex:0 0 190px;
-  min-height:40px;
-  padding:8px 11px;
-  border:1px solid rgba(148,163,184,.20);
-  border-radius:10px;
-  background:#10212d;
-  color:#edf5fa;
-}
-
-.cf115-empty{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  min-height:90px;
-  margin-top:12px;
-  padding:20px;
-  border:1px dashed rgba(148,163,184,.20);
-  border-radius:13px;
-  color:#8fa3b6;
-  font-size:14px;
-  line-height:1.5;
-  text-align:center;
-}
-
-.cf115-confirm{
-  display:flex;
-  align-items:flex-start;
-  gap:12px;
-  margin-top:18px;
-  padding:15px 16px;
-  border:1px solid rgba(91,221,211,.12);
-  border-radius:14px;
-  background:rgba(91,221,211,.045);
-  color:#dce8ef;
-  line-height:1.45;
-  cursor:pointer;
-}
-.cf115-confirm input{
-  flex:0 0 auto;
-  width:18px;
-  height:18px;
-  margin:1px 0 0;
-  accent-color:#55ded0;
-}
-.cf115-confirm span{
-  display:block;
-  font-size:14px;
-}
-
-@media(max-width:1200px){
-  .cf115-person-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-}
-@media(max-width:760px){
-  .cf115-identity-review{padding:17px}
-  .cf115-title,.cf115-subhead,.cf115-address-row{
-    flex-direction:column;
-    align-items:stretch;
-  }
-  .cf115-subhead > span{text-align:left;max-width:none}
-  .cf115-address-class{width:100%;flex-basis:auto}
-}
-@media(max-width:520px){
-  .cf115-person-grid{grid-template-columns:1fr}
-}
+/* CreditFlow v11.6.2 — Professional Identity Review UI */
+.cf1162-review{margin:20px 0;padding:22px;border:1px solid rgba(87,220,211,.18);border-radius:20px;background:linear-gradient(145deg,rgba(9,27,39,.96),rgba(8,22,33,.94));box-shadow:0 18px 50px rgba(0,0,0,.14)}
+.cf1162-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:18px}
+.cf1162-head h3{margin:5px 0 5px;font-size:20px;line-height:1.25;color:#f0f7fb}
+.cf1162-head p{margin:0;color:#8fa4b7;font-size:14px;line-height:1.5}
+.cf1162-badge{flex:0 0 auto;padding:7px 11px;border:1px solid rgba(255,201,66,.24);border-radius:999px;background:rgba(255,193,7,.08);color:#ffd665;font-size:11px;font-weight:800;letter-spacing:.05em}
+.cf1162-data-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.cf1162-data-card{display:flex;align-items:center;gap:13px;min-width:0;min-height:92px;padding:15px;border:1px solid rgba(148,163,184,.13);border-radius:15px;background:rgba(255,255,255,.025)}
+.cf1162-icon{display:grid;place-items:center;flex:0 0 42px;width:42px;height:42px;border-radius:12px;background:linear-gradient(145deg,rgba(46,197,255,.16),rgba(139,92,246,.18));color:#75e8dc;font-size:15px;font-weight:800}
+.cf1162-data-card>div:last-child{min-width:0}
+.cf1162-data-card span{display:block;margin-bottom:6px;color:#8fa4b7;font-size:12px;line-height:1.25}
+.cf1162-data-card strong{display:block;color:#f1f6fa;font-size:15px;line-height:1.4;overflow-wrap:anywhere}
+.cf1162-address-box{margin-top:14px;border:1px solid rgba(148,163,184,.13);border-radius:16px;overflow:hidden;background:rgba(3,14,22,.20)}
+.cf1162-address-head{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:16px 18px;border-bottom:1px solid rgba(148,163,184,.11)}
+.cf1162-address-head h4{margin:0 0 4px;color:#eef6fa;font-size:16px}
+.cf1162-address-head p{margin:0;color:#8fa4b7;font-size:13px;line-height:1.45}
+.cf1162-count{flex:0 0 auto;padding:6px 10px;border-radius:999px;background:rgba(59,130,246,.09);border:1px solid rgba(59,130,246,.20);color:#8db9ff;font-size:12px;font-weight:700}
+.cf1162-address-list{padding:0 18px 16px}
+.cf1162-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:125px;margin-top:16px;padding:20px;border:1px dashed rgba(148,163,184,.18);border-radius:13px;text-align:center}
+.cf1162-empty-icon{display:grid;place-items:center;width:38px;height:38px;margin-bottom:8px;border-radius:50%;background:rgba(87,220,211,.07);color:#70ded5;font-size:21px}
+.cf1162-empty strong{color:#e9f2f7;font-size:14px}
+.cf1162-empty span{margin-top:5px;color:#8298aa;font-size:12px}
+.cf1162-confirm{display:flex;align-items:flex-start;gap:12px;margin-top:14px;padding:15px 16px;border:1px solid rgba(87,220,211,.13);border-radius:14px;background:rgba(87,220,211,.035);cursor:pointer}
+.cf1162-confirm input{width:18px;height:18px;margin:2px 0 0;flex:0 0 auto;accent-color:#58dfd1}
+.cf1162-confirm strong{display:block;color:#edf5f9;font-size:14px}
+.cf1162-confirm span{display:block;margin-top:4px;color:#8298aa;font-size:12px;line-height:1.4}
+/* Address rows generated by existing workflow */
+.cf1162-address-list .cf115-address-row{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:13px 0;border-bottom:1px solid rgba(148,163,184,.10)}
+.cf1162-address-list .cf115-address-row:last-child{border-bottom:0}
+.cf1162-address-list .cf115-address-row strong{display:block;color:#edf5f9;font-size:14px}
+.cf1162-address-list .cf115-address-row small{display:block;margin-top:4px;color:#8298aa;font-size:12px}
+.cf1162-address-list .cf115-address-class{min-width:180px;padding:9px 11px;border:1px solid rgba(148,163,184,.2);border-radius:10px;background:#10212d;color:#eef5f9}
+@media(max-width:1150px){.cf1162-data-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:720px){.cf1162-review{padding:16px}.cf1162-head,.cf1162-address-head,.cf1162-address-list .cf115-address-row{flex-direction:column;align-items:stretch}.cf1162-badge,.cf1162-count{align-self:flex-start}.cf1162-address-list .cf115-address-class{width:100%}}
+@media(max-width:520px){.cf1162-data-grid{grid-template-columns:1fr}}
