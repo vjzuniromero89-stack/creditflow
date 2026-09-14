@@ -1,0 +1,18 @@
+
+/* CreditFlow v11.6 — Identity Review */
+.cf115-identity-review{margin:18px 0;padding:20px;border:1px solid rgba(86,224,209,.24);border-radius:18px;background:rgba(8,24,34,.68)}
+.cf115-title,.cf115-subhead,.cf115-address-row{display:flex;justify-content:space-between;gap:16px;align-items:center}
+.cf115-title strong,.cf115-subhead strong{display:block;font-size:16px}
+.cf115-title span,.cf115-subhead span,.cf115-address-row small{display:block;color:var(--muted,#8fa3b6);margin-top:4px;font-size:13px}
+.cf115-review-badge{padding:7px 10px!important;border-radius:999px;background:rgba(255,193,7,.12);color:#ffd65a!important;font-weight:800;font-size:11px!important;letter-spacing:.05em}
+.cf115-person-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:16px 0}
+.cf115-person-grid>div{padding:14px;border:1px solid rgba(148,163,184,.13);border-radius:13px;background:rgba(255,255,255,.025)}
+.cf115-person-grid small{display:block;color:var(--muted,#8fa3b6);margin-bottom:5px}
+.cf115-addresses{border-top:1px solid rgba(148,163,184,.13);padding-top:15px}
+.cf115-address-row{padding:11px 0;border-bottom:1px solid rgba(148,163,184,.1)}
+.cf115-address-class{min-width:175px;padding:9px 11px;border-radius:10px;background:#10212d;color:#eaf3f8;border:1px solid rgba(148,163,184,.2)}
+.cf115-confirm{display:flex;gap:10px;align-items:flex-start;margin-top:16px;padding:12px;border-radius:12px;background:rgba(86,224,209,.06)}
+.cf115-confirm input{margin-top:3px}
+.cf115-empty{padding:14px 0;color:var(--muted,#8fa3b6)}
+@media(max-width:900px){.cf115-person-grid{grid-template-columns:1fr 1fr}.cf115-title,.cf115-subhead{align-items:flex-start;flex-direction:column}.cf115-address-row{align-items:flex-start;flex-direction:column}.cf115-address-class{width:100%}}
+@media(max-width:560px){.cf115-person-grid{grid-template-columns:1fr}}
