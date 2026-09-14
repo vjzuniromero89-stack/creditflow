@@ -63,14 +63,15 @@ async function enhancedBuild(db,clientId){
   const repairCase=await db.prepare(`SELECT * FROM repair_cases WHERE client_id=? LIMIT 1`).bind(clientId).first();
   if(!repairCase)return {error:"Primero inicia la reparación del cliente.",status:409};
 
-  const [{results:items},{results:assessments},{results:removals},{results:checks}] = await Promise.all([
+  // Load only the data required to validate the audit first.
+  // This guarantees an incomplete audit returns a clean 409 before optional
+  // compliance/history queries can fail.
+  const [{results:items},{results:assessments}] = await Promise.all([
     db.prepare(`SELECT * FROM credit_items WHERE client_id=? ORDER BY id`).bind(clientId).all(),
-    db.prepare(`SELECT * FROM dispute_assessments WHERE client_id=?`).bind(clientId).all(),
-    db.prepare(`SELECT * FROM removal_events WHERE client_id=?`).bind(clientId).all(),
-    db.prepare(`SELECT * FROM collector_compliance_checks WHERE client_id=? ORDER BY updated_at DESC,id DESC`).bind(clientId).all()
+    db.prepare(`SELECT * FROM dispute_assessments WHERE client_id=?`).bind(clientId).all()
   ]);
 
-  // v12.3.1 guard: Strategy must never be built before the real audit is complete.
+  // v12.4.1 guard: Strategy must never be built before the real audit is complete.
   const activeItems=(items||[]).filter(x=>x.removed_status!=="eliminado");
   const verifiedIds=new Set((assessments||[]).filter(a=>a.human_verified).map(a=>String(a.credit_item_id)));
   const audited=activeItems.filter(i=>verifiedIds.has(String(i.id))).length;
@@ -83,6 +84,17 @@ async function enhancedBuild(db,clientId){
       total:activeItems.length
     };
   }
+
+  // Only after the audit is complete do we load secondary strategy signals.
+  let removals=[],checks=[];
+  try{
+    const r=await db.prepare(`SELECT * FROM removal_events WHERE client_id=?`).bind(clientId).all();
+    removals=r.results||[];
+  }catch{}
+  try{
+    const c=await db.prepare(`SELECT * FROM collector_compliance_checks WHERE client_id=? ORDER BY updated_at DESC,id DESC`).bind(clientId).all();
+    checks=c.results||[];
+  }catch{}
 
   await db.prepare(`DELETE FROM strategy_actions WHERE client_id=? AND status IN ('planned','blocked')`).bind(clientId).run();
 
