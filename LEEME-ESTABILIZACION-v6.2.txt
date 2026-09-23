@@ -1,0 +1,40 @@
+CREDITFLOW — ESTABILIZACIÓN v6.2
+
+IMPORTANTE
+==========
+Los datos NO están borrados. Se verificó directamente en Supabase:
+- existen 2 clientes
+- existen 21 credit_items
+- existen 3 cartas
+- el historial de actividad sigue presente
+
+OBJETIVO
+========
+Volver temporalmente el FRONTEND a la versión estable v5 para recuperar
+la lectura normal de Clientes, sin tocar la base de datos y sin revertir
+el fix de conexión/retry de Supabase.
+
+REEMPLAZAR SOLAMENTE
+====================
+1. creditflow/public/index.html
+2. creditflow/public/assets/js/app.js
+3. creditflow/public/assets/js/sections/clients-auto.js
+
+NO TOCAR
+========
+- creditflow/src/db-shim.js   (deja el fix v6.1)
+- creditflow/src/index.js
+- creditflow/src/index-auto.js
+- creditflow/wrangler.jsonc
+- Supabase
+- ninguna tabla
+
+Los archivos de estrategia v6 pueden quedarse en GitHub; simplemente
+no se cargarán temporalmente.
+
+DESPUÉS
+=======
+1. Espera el deploy.
+2. Ctrl + F5.
+3. Entra a Clientes.
+4. Verifica que aparezcan los 2 clientes existentes.

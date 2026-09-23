@@ -1,0 +1,26 @@
+CREDITFLOW v10 — CASE INTELLIGENCE
+=================================
+SUPABASE: migración v10 YA aplicada. NO corras SQL.
+
+REEMPLAZA
+1 creditflow/wrangler.jsonc
+2 creditflow/public/index.html
+3 creditflow/public/assets/js/app.js
+
+AGREGA
+4 creditflow/src/index-v10.js
+5 creditflow/public/assets/js/sections/clients-v10.js
+6 creditflow/public/assets/js/sections/case-intelligence-v10.js
+7 creditflow/public/assets/css/case-intelligence-v10.css
+
+v10 AGREGA
+- Registro estructurado de respuestas.
+- Recomendaciones según resultado: verified, corrected, deleted, more info, identity theft block, no response.
+- Cronología de reportes con vigente/histórico.
+- Un reporte anterior queda marcado HISTÓRICO y no debe gobernar nuevas decisiones.
+- Historial de snapshots para comparaciones futuras.
+- Nueva sección Case Intelligence dentro de Historial y cobros.
+- No genera otra ronda simplemente porque pasó tiempo.
+
+IMPORTANTE
+El parser legacy todavía procesa el PDF antes de que v10 conozca la fecha derivada del reporte. v10 marca los reportes viejos como no autoritativos y evita usarlos para nuevas recomendaciones, pero una protección transaccional completa del estado legacy requiere refactorizar el importador base. No se debe habilitar importación 100% automática hasta hacer ese refactor.
