@@ -1,0 +1,279 @@
+/* CreditFlow v7.1 — layout recovery + visual hardening */
+
+.cf7-shell {
+  display: block !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-height: 100vh !important;
+  overflow-x: hidden !important;
+}
+
+.cf7-sidebar.sidebar,
+.cf7-sidebar {
+  position: fixed !important;
+  left: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 252px !important;
+  min-width: 252px !important;
+  max-width: 252px !important;
+  height: 100vh !important;
+  margin: 0 !important;
+}
+
+.cf7-main {
+  display: block !important;
+  width: calc(100% - 252px) !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  margin: 0 0 0 252px !important;
+  padding: 0 !important;
+  flex: none !important;
+}
+
+.cf7-topbar {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  box-sizing: border-box !important;
+}
+
+.cf7-topbar > div:first-of-type {
+  min-width: 0 !important;
+  width: auto !important;
+  max-width: 72% !important;
+  flex: 1 1 auto !important;
+}
+
+.cf7-topbar h1,
+.cf7-topbar p,
+.cf7-breadcrumb {
+  width: auto !important;
+  max-width: none !important;
+  white-space: normal !important;
+}
+
+#content.cf7-content-inner,
+#content.cf7-content,
+.cf7-content-inner,
+.cf7-content {
+  display: block !important;
+  width: 100% !important;
+  max-width: 1540px !important;
+  min-width: 0 !important;
+  margin: 0 auto !important;
+  padding: 28px 30px 60px !important;
+  box-sizing: border-box !important;
+}
+
+.cf7-content-inner > *,
+.cf7-content > * {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+.cf7-content-inner .card,
+.cf7-content-inner section,
+.cf7-content-inner .table-wrap,
+.cf7-content-inner .grid,
+.cf7-content-inner .grid-2,
+.cf7-content-inner .grid-kpi {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+/* DASHBOARD */
+.cf7-dashboard-hero {
+  min-height: 136px !important;
+  padding: 24px 26px !important;
+  align-items: center !important;
+}
+
+.cf7-dashboard-hero > div:first-child {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+}
+
+.cf7-dashboard-hero h2 {
+  margin: 5px 0 7px !important;
+  font-size: clamp(25px, 2vw, 32px) !important;
+  line-height: 1.08 !important;
+  white-space: normal !important;
+}
+
+.cf7-dashboard-hero p {
+  max-width: 720px !important;
+  font-size: 13px !important;
+  line-height: 1.55 !important;
+}
+
+.cf7-dashboard-hero .btn {
+  flex: 0 0 auto !important;
+  min-width: 180px !important;
+  min-height: 42px !important;
+}
+
+.cf7-dashboard-kpis,
+.cf7-list-kpis,
+.cf7-ledger-kpis {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+  width: 100% !important;
+}
+
+.cf7-dashboard-kpis > button,
+.cf7-list-kpis > button,
+.cf7-ledger-kpis > div {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 116px !important;
+  padding: 17px 18px !important;
+  overflow: hidden !important;
+}
+
+.cf7-dashboard-kpis strong,
+.cf7-list-kpis span,
+.cf7-ledger-kpis strong {
+  font-size: clamp(24px, 2vw, 31px) !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
+.cf7-dashboard-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr) !important;
+  gap: 14px !important;
+  width: 100% !important;
+  align-items: start !important;
+}
+
+.cf7-dashboard-grid > .card {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 310px !important;
+}
+
+.cf7-work-row,
+.cf7-result-list button,
+.cf7-client-quicklist button,
+.cf7-payment-list button,
+.cf7-client-results button {
+  min-width: 0 !important;
+  width: 100% !important;
+}
+
+/* CLIENT WORKSPACE */
+.cf7-client-hero,
+.cf7-client-tabs,
+.cf7-client-panels,
+.cf7-client-panel {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+.cf7-client-hero-stats {
+  min-width: min(520px, 48%) !important;
+}
+
+.cf7-negative-summary,
+.cf7-negative-groups,
+.cf7-negative-group,
+.cf7-credit-item,
+.cf7-credit-item-main,
+.cf7-credit-item-detail {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+/* TABLES */
+.cf7-content-inner .table-wrap {
+  width: 100% !important;
+  overflow-x: auto !important;
+}
+
+.cf7-content-inner table {
+  width: 100% !important;
+  min-width: 760px;
+}
+
+/* Stop old CSS from squeezing text */
+.cf7-content-inner h1,
+.cf7-content-inner h2,
+.cf7-content-inner h3,
+.cf7-content-inner h4,
+.cf7-content-inner p,
+.cf7-content-inner span,
+.cf7-content-inner strong,
+.cf7-content-inner small {
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+}
+
+@media (max-width: 1180px) {
+  .cf7-dashboard-kpis,
+  .cf7-list-kpis,
+  .cf7-ledger-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .cf7-dashboard-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .cf7-client-hero-stats {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 960px) {
+  .cf7-sidebar.sidebar,
+  .cf7-sidebar {
+    transform: translateX(-105%) !important;
+  }
+
+  .cf7-sidebar.open {
+    transform: translateX(0) !important;
+  }
+
+  .cf7-main {
+    width: 100% !important;
+    margin-left: 0 !important;
+  }
+
+  #content.cf7-content-inner,
+  #content.cf7-content,
+  .cf7-content-inner,
+  .cf7-content {
+    max-width: none !important;
+    padding: 22px 18px 48px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .cf7-dashboard-kpis,
+  .cf7-list-kpis,
+  .cf7-ledger-kpis {
+    grid-template-columns: 1fr !important;
+  }
+
+  .cf7-dashboard-hero {
+    align-items: stretch !important;
+  }
+
+  .cf7-dashboard-hero .btn {
+    width: 100% !important;
+  }
+
+  #content.cf7-content-inner,
+  #content.cf7-content,
+  .cf7-content-inner,
+  .cf7-content {
+    padding: 16px 12px 40px !important;
+  }
+}

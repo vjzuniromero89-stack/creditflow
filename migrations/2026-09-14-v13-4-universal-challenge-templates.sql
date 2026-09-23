@@ -1,0 +1,2 @@
+-- Migration creditflow_v13_4_universal_challenge_templates already applied directly to Supabase.
+-- Adds ACE templates 67-69 for charge-off, late-payment, and inquiry challenges.

@@ -1,0 +1,61 @@
+/* CreditFlow — Motor automático del caso */
+.case-engine-loading {
+  padding:18px; border:1px solid var(--border); border-radius:var(--radius-md);
+  color:var(--text-2); background:var(--surface);
+}
+.case-engine {
+  margin-bottom:22px; padding:20px;
+  border:1px solid rgba(34,211,238,.22); border-radius:var(--radius-md);
+  background:
+    radial-gradient(circle at 92% 12%, rgba(34,211,238,.10), transparent 28%),
+    var(--surface);
+}
+.case-engine-main {
+  display:flex; align-items:flex-start; justify-content:space-between; gap:22px;
+}
+.case-engine-kicker {
+  color:var(--cyan); font-size:10.5px; font-weight:800; letter-spacing:.09em;
+  text-transform:uppercase; margin-bottom:5px;
+}
+.case-engine h2 { font-size:21px; margin:0 0 6px; }
+.case-engine p { margin:0; color:var(--text-1); max-width:780px; line-height:1.5; }
+.case-primary-action { min-width:230px; justify-content:center; }
+.case-steps {
+  display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; margin-top:18px;
+}
+.case-step {
+  position:relative; display:flex; align-items:center; gap:7px;
+  padding:8px 10px; border-radius:10px; border:1px solid var(--border);
+  color:var(--text-2); background:rgba(255,255,255,.02);
+}
+.case-step span {
+  width:19px; height:19px; display:grid; place-items:center; border-radius:50%;
+  border:1px solid var(--border); font-size:10px; flex:0 0 auto;
+}
+.case-step.done { color:var(--text-1); border-color:rgba(52,211,153,.18); }
+.case-step.done span { color:#041912; background:var(--green); border-color:transparent; font-weight:900; }
+.case-step.active { border-color:rgba(34,211,238,.38); background:rgba(34,211,238,.06); color:var(--cyan); }
+.case-step.active span { box-shadow:0 0 0 4px rgba(34,211,238,.08); border-color:var(--cyan); }
+.case-metrics {
+  display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; margin-top:10px;
+}
+.case-metrics > div {
+  padding:9px 10px; border-radius:10px; background:rgba(255,255,255,.025);
+}
+.case-metrics span { display:block; color:var(--text-2); font-size:10.5px; margin-bottom:2px; }
+.case-metrics strong { font-family:var(--font-display); font-size:16px; font-variant-numeric:tabular-nums; }
+.case-wait-track { height:6px; margin-top:12px; background:rgba(255,255,255,.06); border-radius:99px; overflow:hidden; }
+.case-wait-track span { display:block; height:100%; background:var(--grad-primary); border-radius:inherit; }
+.case-state-success { border-color:rgba(52,211,153,.30); }
+.case-state-success .case-engine-kicker, .case-state-success h2 { color:var(--green); }
+.case-state-review { border-color:rgba(251,191,36,.26); }
+.case-state-error { border-color:rgba(248,113,113,.28); }
+@media (max-width:850px) {
+  .case-engine-main { flex-direction:column; }
+  .case-primary-action { width:100%; min-width:0; }
+  .case-steps, .case-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (max-width:520px) {
+  .case-engine { padding:16px; }
+  .case-steps, .case-metrics { grid-template-columns:1fr; }
+}

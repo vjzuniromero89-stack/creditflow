@@ -1,0 +1,26 @@
+/* CreditFlow automation additions */
+.automation-doc-banner {
+  display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+  padding:14px 16px; margin-bottom:14px; border:1px solid rgba(34,211,238,.22);
+  border-radius:14px; background:rgba(34,211,238,.055);
+}
+.automation-doc-banner p { margin:3px 0 0; color:var(--text-2); font-size:12.5px; }
+.automation-doc-card { min-height:100%; }
+.automation-doc-thumb { width:100%; max-height:210px; background:rgba(255,255,255,.025); }
+.automation-doc-actions { align-items:center; }
+.ai-doc-results {
+  display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-bottom:14px;
+}
+.ai-doc-field {
+  padding:11px 12px; border:1px solid var(--border); border-radius:10px; background:var(--surface);
+}
+.ai-doc-field span { display:block; color:var(--text-2); font-size:11px; margin-bottom:3px; }
+.ai-doc-field strong { display:block; font-size:13px; overflow-wrap:anywhere; }
+.automation-warning {
+  padding:11px 13px; border:1px solid rgba(251,191,36,.25); border-radius:10px;
+  color:var(--text-1); background:rgba(251,191,36,.07); font-size:12px; line-height:1.45;
+}
+@media (max-width:640px) {
+  .automation-doc-banner { flex-direction:column; }
+  .ai-doc-results { grid-template-columns:1fr; }
+}

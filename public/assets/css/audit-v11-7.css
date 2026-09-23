@@ -1,0 +1,69 @@
+.cf117-audit{margin-top:18px;padding:22px;border:1px solid rgba(86,221,211,.18);border-radius:18px;background:#091b27}
+.cf117-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.cf117-head h3{margin:5px 0;font-size:22px}.cf117-head p{margin:0;color:#8fa4b7}
+.cf117-progress{text-align:right}.cf117-progress strong{display:block;font-size:24px;color:#66e1d5}.cf117-progress span{font-size:12px;color:#8fa4b7}
+.cf117-progressbar{height:7px;margin:16px 0 18px;border-radius:99px;background:#172b37;overflow:hidden}.cf117-progressbar i{display:block;height:100%;background:linear-gradient(90deg,#35c5ed,#8b5cf6);border-radius:99px}
+.cf117-notice{display:flex;gap:8px;flex-wrap:wrap;padding:13px 15px;margin-bottom:14px;border:1px solid rgba(255,202,70,.16);border-radius:12px;background:rgba(255,193,7,.04)}.cf117-notice span{color:#91a5b5}
+.cf117-list{display:grid;gap:10px}.cf117-item{display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:14px;align-items:center;padding:15px;border:1px solid rgba(148,163,184,.13);border-radius:14px;background:rgba(255,255,255,.02)}.cf117-item.is-done{border-color:rgba(72,220,177,.2)}
+.cf117-index{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#172d3b;color:#a8bbc8;font-weight:800}.is-done .cf117-index{background:rgba(44,200,154,.12);color:#4de0ad}
+.cf117-main{min-width:0}.cf117-name{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.cf117-name strong{font-size:15px}.cf117-name span{font-size:12px;color:#8da1b2}
+.cf117-meta{display:flex;gap:20px;flex-wrap:wrap;margin-top:9px}.cf117-meta span{display:flex;gap:6px;align-items:center}.cf117-meta small{color:#718899}.cf117-meta b{font-size:12px}
+.cf117-result{margin-top:10px;padding:10px 12px;border-radius:10px;background:rgba(79,222,201,.045)}.cf117-result b{display:block;font-size:12px;color:#65ded2}.cf117-result span{display:block;margin-top:3px;font-size:12px;color:#91a5b5}
+.cf117-footer{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-top:16px;padding-top:16px;border-top:1px solid rgba(148,163,184,.12)}.cf117-footer strong,.cf117-footer span{display:block}.cf117-footer span{margin-top:4px;color:#8fa4b7;font-size:12px}
+.cf117-modal-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}.cf117-modal-summary>div{padding:12px;border:1px solid rgba(148,163,184,.13);border-radius:11px}.cf117-modal-summary span,.cf117-modal-summary strong{display:block}.cf117-modal-summary span{font-size:11px;color:#8197a8}.cf117-modal-summary strong{margin-top:4px;font-size:13px}
+.cf117-confirmations{display:grid;gap:9px;margin-top:14px}.cf117-confirmations label{padding:11px;border:1px solid rgba(148,163,184,.12);border-radius:10px}.cf117-danger{color:#f4c76d}
+@media(max-width:760px){.cf117-item{grid-template-columns:34px 1fr}.cf117-item>button{grid-column:1/-1}.cf117-modal-summary{grid-template-columns:1fr 1fr}.cf117-footer,.cf117-head{flex-direction:column;align-items:stretch}.cf117-progress{text-align:left}}
+
+
+/* v11.7.1 — audit visibility fix */
+#cf8-repair-workflow.cf117-audit-mode .cf8-workflow-grid[hidden]{
+  display:none !important;
+}
+#cf117-audit-host{
+  display:block !important;
+  width:100% !important;
+  min-width:0 !important;
+  margin-top:18px !important;
+  overflow:visible !important;
+}
+#cf117-audit-host .cf117-audit{
+  display:block !important;
+  width:100% !important;
+  box-sizing:border-box !important;
+}
+
+/* CreditFlow v11.8 — Smart Audit */
+.cf118-head-actions{display:flex;align-items:center;gap:14px}
+.cf118-smart{margin:18px 0;padding:16px;border:1px solid var(--cf7-line);border-radius:14px;background:rgba(4,12,20,.32)}
+.cf118-smart-head strong{display:block;font-size:14px}
+.cf118-smart-head span{display:block;margin-top:5px;color:var(--cf7-muted);font-size:12px;line-height:1.45}
+.cf118-groups{display:grid;gap:9px;margin-top:13px}
+.cf118-group{padding:12px 14px;border:1px solid var(--cf7-line);border-radius:11px;background:rgba(10,28,40,.5)}
+.cf118-group.has-findings{border-color:rgba(245,190,70,.3)}
+.cf118-group-head{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.cf118-group-head>div strong{display:block}
+.cf118-group-head>div span{display:block;color:var(--cf7-muted);font-size:11px;margin-top:3px}
+.cf118-group-head>b{font-size:11px;white-space:nowrap}
+.cf118-findings{display:grid;gap:7px;margin-top:10px;padding-top:10px;border-top:1px solid var(--cf7-line)}
+.cf118-findings>div{display:grid;grid-template-columns:160px 1fr;gap:10px;font-size:11px}
+.cf118-findings span{color:var(--cf7-muted)}
+@media(max-width:800px){.cf118-head-actions{align-items:flex-end;flex-direction:column}.cf118-group-head{align-items:flex-start;flex-direction:column}.cf118-findings>div{grid-template-columns:1fr}}
+
+/* CreditFlow v11.9 — Collector Compliance */
+.cf119-compliance{margin-top:12px;padding:13px;border:1px solid rgba(103,190,255,.22);border-radius:10px;background:rgba(6,20,31,.48)}
+.cf119-title{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.cf119-title span{display:block;font-size:9px;letter-spacing:.12em;color:var(--cf7-muted)}
+.cf119-title strong{display:block;margin-top:2px;font-size:12px}
+.cf119-review{font-size:9px;padding:5px 8px;border-radius:999px;border:1px solid rgba(245,190,70,.28)}
+.cf119-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}
+.cf119-grid>div{padding:9px;border:1px solid var(--cf7-line);border-radius:8px}
+.cf119-grid small{display:block;color:var(--cf7-muted);font-size:9px}
+.cf119-grid strong{display:block;margin-top:3px;font-size:10px;line-height:1.35}
+.cf119-compliance p{margin:9px 0 0;color:var(--cf7-muted);font-size:10px;line-height:1.45}
+@media(max-width:850px){.cf119-grid{grid-template-columns:1fr 1fr}}
+
+/* v12.1 compliance review */
+.cf121-review-btn{margin-top:10px}
+.cf121-source{margin-top:9px;font-size:10px;color:var(--cf7-muted)}
+.cf121-warning{display:flex;flex-direction:column;gap:3px;padding:10px 12px;margin-bottom:12px;border:1px solid rgba(245,190,70,.28);border-radius:9px}
+.cf121-warning span,.cf121-human{font-size:11px;color:var(--cf7-muted)}
+.cf121-human{display:block;margin:12px 0}

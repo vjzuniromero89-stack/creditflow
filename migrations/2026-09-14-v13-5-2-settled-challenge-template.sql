@@ -1,0 +1,2 @@
+-- Migration creditflow_v13_5_2_settled_challenge_template already applied directly to Supabase.
+-- Adds template ID 70 for settled/liquidated account reporting challenges.
